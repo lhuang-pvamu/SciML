@@ -82,6 +82,7 @@ end
 
 function set_matrics(c)
     M = Diagonal(1 ./ (c .^ 2))
+    NS = length(config["x"])
     M[1, 1] = 0
     M[NS, NS] = 0
     #display(M)

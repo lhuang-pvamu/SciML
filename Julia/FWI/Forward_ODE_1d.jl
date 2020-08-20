@@ -17,9 +17,9 @@ include("Forward_1d.jl")
 output_figures="Figures/"
 output_models="Models/"
 
-config = Dict()
-config["dx"] = 0.005
-config["x"] = 0.0:config["dx"]:1.0
+#config = Dict()
+#config["dx"] = 0.005
+#config["x"] = 0.0:config["dx"]:1.0
 
 c, c0 = velocity_model()
 
@@ -36,7 +36,7 @@ function setS(t)
     S .* ricker(t,10)
 end
 
-NS = NS-1
+NS = length(config["x"])-1
 setS(0.2)
 
 function set_matrics_ode(c)
@@ -79,9 +79,10 @@ function forward_ODE_driver(c)
     M, K, MI = set_matrics_ode(c)
     p = (c, M, K, MI)
     prob = ODEProblem(wave, U0, tspan, p, saveat=config["dt"])
-    sol = solve(prob, Tsit5(), saveat=config["dt"])
+    #sol = solve(prob, Tsit5(), saveat=config["dt"])
+    sol = solve(prob, Vern7(), saveat=config["dt"])
     res = Array(sol)
-    Z = transpose(res[1:NS,:])
+    Z = transpose(res[1:NS+1,:])
     #heatmap(Z)
     traces = record_data(Z)
     Z, traces
@@ -89,9 +90,11 @@ end
 
 U, traces = forward_ODE_driver(c)
 heatmap(U)
+savefig(output_figures*"heatmap_ODE.png")
 plot(traces[1,:])
-plot(traces[2,:])
-plot(traces[3,:])
+plot!(traces[2,:])
+plot!(traces[3,:])
+savefig(output_figures*"plot_ODE_traces.png")
 
 ###### SciML using ANN #######
 
@@ -117,10 +120,10 @@ tspan = (0.0,3.0)
 prob_nn = ODEProblem(wave_ann, U0, tspan, p)
 
 function forward_ann(θ)
-    res = Array(solve(prob_nn, Vern7(), u0=U0, p=θ, saveat = config["dt"],
+    res = Array(solve(prob_nn, Tsit5(), u0=U0, p=θ, saveat = config["dt"],
                          abstol=1e-6, reltol=1e-6,
                          sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP())))
-    Z0 = transpose(res[1:NS,:])
+    Z0 = transpose(res[1:NS+1,:])
     tra = record_data(Z0)
     Z0, tra
 end
@@ -143,25 +146,30 @@ loss(p)
 const losses1 = []
 callback(θ,l,pred) = begin
     push!(losses1, l)
-    if length(losses1)%5==0
+    if length(losses1)%1==0
         println(losses1[end])
     end
     false
 end
 
-res1 = DiffEqFlux.sciml_train(loss, p, ADAM(0.001), cb=callback, maxiters = 100)
+res1 = DiffEqFlux.sciml_train(loss, p, ADAM(0.01), cb=callback, maxiters = 100)
 res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
 
 
-display(res1.minimizer)
-Z0, tr = forward_ann(res1.minimizer)
+display(res2.minimizer)
+Z0, tr = forward_ann(res2.minimizer)
 heatmap(Z0)
+savefig(output_figures*"heatmap_ODE_ann.png")
+plot(tr[1,:])
+plot!(tr[2,:])
+plot!(tr[3,:])
+savefig(output_figures*"plot_ODE_ann_traces.png")
 
-weights = res1.minimizer
-@save "fwi_1d_nn.jld2" ann weights
-@load "fwi_1d_nn.jld2" ann weights
+weights = res2.minimizer
+@save output_models*"fwi_1d_nn.jld2" ann weights
+@load output_models*"fwi_1d_nn.jld2" ann weights
 
-p=weights
+#weights
 ####### Optimization ############
 
 function F_ODE(c0)
@@ -193,3 +201,4 @@ summary(res)
 Optim.minimum(res)
 plot(res.minimizer)
 plot!(c)
+savefig(output_figures*"plot_ODE_optim.png")
