@@ -116,7 +116,7 @@ end
 
 NS = size(c,1)-1
 U0 = zeros(2*NS)
-tspan = (0.0,1.0)
+tspan = (0.0,3.0)
 prob_nn = ODEProblem(wave_ann, U0, tspan, p)
 
 function forward_ann(θ)
@@ -156,7 +156,7 @@ res1 = DiffEqFlux.sciml_train(loss, p, ADAM(0.01), cb=callback, maxiters = 100)
 res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
 
 # Plot the losses
-plot(losses, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
+plot(losses1, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
 savefig(output_figures*"loss.png")
 
 display(res2.minimizer)
@@ -172,7 +172,6 @@ weights = res2.minimizer
 @save output_models*"fwi_1d_nn.jld2" ann weights
 @load output_models*"fwi_1d_nn.jld2" ann weights
 
-p=weights
 Z0, tr = forward_ann(weights)
 heatmap(Z0)
 
@@ -187,7 +186,7 @@ function F_ODE(c0)
     prob = ODEProblem(wave, U0, tspan, p, saveat=config["dt"])
     sol = solve(prob, Tsit5())
     res = Array(sol)
-    Z0 = transpose(res[1:NS,:])
+    Z0 = transpose(res[1:NS+1,:])
     tr = record_data(Z0)
     sum((traces.-tr).^2)
 end
