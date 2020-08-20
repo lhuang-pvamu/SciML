@@ -10,9 +10,12 @@ using DataDrivenDiffEq
 using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
-using RecursiveArrayTools
+#using RecursiveArrayTools
 gr()
 include("Forward_1d.jl")
+
+output_figures="Figures/"
+output_models="Models/"
 
 config = Dict()
 config["dx"] = 0.005
@@ -56,7 +59,6 @@ function set_matrics_ode(c)
     M, K, MI
 end
 
-M
 
 U0 = zeros(2*NS)
 dx = config["dx"]
@@ -93,7 +95,7 @@ plot(traces[3,:])
 
 ###### SciML using ANN #######
 
-ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
+ann = FastChain(FastDense(4, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
 p = initial_params(ann)
 M, K, MI = set_matrics_ode(c)
 
@@ -103,7 +105,7 @@ function wave_ann(u, p, t)
     U = u[1:NS+1]
     V = u[NS+2:end]
     S1=setS(t)
-    du0dt = c[1]*(2/dx*(U[2]-U[1])) - ann(Float32[V[1],c[1],c[2]],p)[1]  #c[1]*(2/dx*(U[2]-U[1]) - V[1]/c[2])
+    du0dt = c[1]*(2/dx*(U[2]-U[1])) - ann(Float32[V[1],c[1],c[2], t],p)[1]  #c[1]*(2/dx*(U[2]-U[1]) - V[1]/c[2])
     duNdt = c[NS+1]*(2/dx*(U[NS]-U[NS+1]) - V[NS-1]/c[NS])
     W = MI * (S1[2:NS] - (K * U))
     vcat(du0dt, V, duNdt, W)
@@ -119,8 +121,8 @@ function forward_ann(θ)
                          abstol=1e-6, reltol=1e-6,
                          sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP())))
     Z0 = transpose(res[1:NS,:])
-    #tra = record_data(Z0)
-    Z0, 0 #tra
+    tra = record_data(Z0)
+    Z0, tra
 end
 
 Z0, tr = forward_ann(p)

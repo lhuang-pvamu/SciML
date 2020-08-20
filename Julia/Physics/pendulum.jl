@@ -10,12 +10,13 @@ using DataDrivenDiffEq
 using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
-using RecursiveArrayTools
 #using BSON: @load, @save
 using Zygote
 using JLD2
 gr()
 
+output_figures="Figures/"
+output_models="Models/"
 
 g=9.8
 L=2.0
@@ -40,7 +41,7 @@ end
 theta = pendulum_solver(pi/2, 0, 10.0)
 
 plot(results)
-
+savefig(output_figures*"plot_fd.png")
 #############
 # use ODE solver
 ###########
@@ -65,11 +66,10 @@ sol = solve(prob, Tsit5(), saveat=Δt)
 res = Array(sol)
 
 plot(res[1,:])
-
-plot(res[2,:])
-
+#plot!(res[2,:])
+savefig(output_figures*"plot_ode.png")
 scatter(res[1,:], res[2,:])
-
+savefig(output_figures*"scatter_ode.png")
 ##################################
 #### Neural Network
 ##########################
@@ -122,15 +122,19 @@ res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01),
 
 # Plot the losses
 plot(losses, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
+savefig(output_figures*"loss.png")
 
 # Plot the data and the approximation
 NNsolution = predict(res2.minimizer)
 # Trained on noisy data vs real solution
 plot(NNsolution')
 plot!(res')
+savefig(output_figures*"plot_nn.png")
+scatter(NNsolution[1,:],NNsolution[2,:])
+savefig(output_figures*"scatter_nn.png")
 weights = res2.minimizer
-@save "pendulum_nn.jld2" ann weights
-@load "pendulum_nn.jld2" ann weights
+@save output_models*"pendulum_nn.jld2" ann weights
+@load output_models*"pendulum_nn.jld2" ann weights
 
 NNsolution = predict(weights)
 plot(NNsolution')
@@ -139,7 +143,7 @@ plot!(res')
 ann = FastChain(FastDense(1, 32, tanh),FastDense(32, 1))
 weights = initial_params(ann)
 
-@load "pendulum_nn.jld2" ann weights
+@load output_models*"pendulum_nn.jld2" ann weights
 
 U0 = Float32[pi-0.01,0]
 tspan = (0.0,60.0)

@@ -10,7 +10,6 @@ using DataDrivenDiffEq
 using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
-using RecursiveArrayTools
 gr()
 
 config = Dict()
@@ -28,7 +27,13 @@ function set_config!(config, c)
     config["x_s"] = 0.1
     # Receiver position(s)
     config["x_r"] = [0.2, 0.4, 0.6]
-
+    config["recr_m"] = zeros(length(config["x_r"]), length(config["x"]))
+    for i = 1:length(config["x_r"])
+        jr = argmin(abs.(config["x"] .- config["x_r"][i]))
+        config["recr_m"][i,jr] = 1.0
+        #traces[i, :] = UT[jr, :]
+        #push!(traces,U[:, jr])
+    end
     config
 end
 
@@ -73,11 +78,7 @@ function velocity_model()
     c, c0
 end
 
-c, c0 = velocity_model()
-set_config!(config, c)
-NS = length(config["x"])
-plot(c)
-plot!(c0)
+
 
 function set_matrics(c)
     M = Diagonal(1 ./ (c .^ 2))
@@ -113,13 +114,7 @@ function set_matrics(c)
     M, A, Kxx, Kx, S, R, RI
 end
 
-NT = length(config["t"])
-t = config["t"]
-N = length(t)
-println(N)
-w = ricker(t, 10.0)
-print(length(w))
-plot(t, w)
+
 
 function forward(NT, NS, M, A, Kxx, Kx, dt, w, S, RI)
     U = zeros(NT, NS)
@@ -139,16 +134,9 @@ end
 #heatmap(U)
 
 function record_data(U)
-    traces = []
+    #traces = []
     UT = transpose(U)
-    A = zeros(length(config["x_r"]), size(UT,1))
-    for i = 1:length(config["x_r"])
-        jr = argmin(abs.(config["x"] .- config["x_r"][i]))
-        A[i,jr] = 1.0
-        #traces[i, :] = UT[jr, :]
-        #push!(traces,U[:, jr])
-    end
-    A*UT
+    config["recr_m"]*UT
     #transpose(convert(Array,VectorOfArray(traces)))
     #traces
 end
@@ -158,19 +146,26 @@ end
 #plot!(traces[2, :])
 #plot!(traces[3, :])
 
-function Forward_Driver(c)
-    M, A, Kxx, Kx, S, R, RI = set_matrics(c)
-    NT = length(config["t"])
+function Forward_Driver()
+    c, c0 = velocity_model()
+    set_config!(config, c)
     NS = length(config["x"])
+    plot(c)
+    plot!(c0)
+    NT = length(config["t"])
+    w = ricker(config["t"], 10.0)
+    plot(config["t"], w)
+    M, A, Kxx, Kx, S, R, RI = set_matrics(c)
     Ux = forward(NT, NS, M, A, Kxx, Kx, config["dt"], w, S, RI)
-    t = record_data(Ux)
+    tr = record_data(Ux)
     heatmap(Ux)
-    plot(t[1, :])
-    Ux, t
+    plot(tr[1, :])
+    Ux, tr
 end
 
-U, tr = Forward_Driver(c)
+U, tr = Forward_Driver()
 heatmap(U)
+plot(transpose(tr))
 
 function F(c0)
     M, A, Kxx, Kx, S, R, RI = set_matrics(c0)
@@ -181,6 +176,7 @@ function F(c0)
     sum((traces - t) .^ 2)
 end
 
+
 #diff = F(c0)
 
 function F_inverse()
@@ -188,7 +184,7 @@ function F_inverse()
         F,
         c0,
         LBFGS(),
-        Optim.Options(show_trace = true, iterations = 50, store_trace=true, f_tol=1e-8),
+        Optim.Options(show_trace = true, iterations = 5, store_trace=true, f_tol=1e-8),
     )
 
     summary(res)
@@ -220,4 +216,15 @@ function F_inverse()
     print(trace_time)
     plot(losses)
     plot(trace_time, log10.(losses/losses[end]))
+    return res
 end
+
+#res = F_inverse()
+
+#plot(res.minimizer)
+#plot!(c0)
+#plot!(c)
+
+#Ux, tr = Forward_Driver(res.minimizer)
+#plot(tr[1, :])
+#heatmap(Ux)
