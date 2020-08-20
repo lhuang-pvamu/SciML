@@ -116,7 +116,7 @@ end
 
 NS = size(c,1)-1
 U0 = zeros(2*NS)
-tspan = (0.0,3.0)
+tspan = (0.0,1.0)
 prob_nn = ODEProblem(wave_ann, U0, tspan, p)
 
 function forward_ann(θ)
@@ -147,7 +147,7 @@ const losses1 = []
 callback(θ,l,pred) = begin
     push!(losses1, l)
     if length(losses1)%1==0
-        println(losses1[end])
+        println(length(losses1), ": ", losses1[end])
     end
     false
 end
@@ -155,6 +155,9 @@ end
 res1 = DiffEqFlux.sciml_train(loss, p, ADAM(0.01), cb=callback, maxiters = 100)
 res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
 
+# Plot the losses
+plot(losses, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
+savefig(output_figures*"loss.png")
 
 display(res2.minimizer)
 Z0, tr = forward_ann(res2.minimizer)
@@ -169,7 +172,10 @@ weights = res2.minimizer
 @save output_models*"fwi_1d_nn.jld2" ann weights
 @load output_models*"fwi_1d_nn.jld2" ann weights
 
-#weights
+p=weights
+Z0, tr = forward_ann(weights)
+heatmap(Z0)
+
 ####### Optimization ############
 
 function F_ODE(c0)
