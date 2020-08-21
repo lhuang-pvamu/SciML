@@ -11,36 +11,24 @@ using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
 using JLD2
+using CuArrays
 #using RecursiveArrayTools
 gr()
 include("Forward_1d.jl")
 
 output_figures="Figures/"
 output_models="Models/"
-
+CuArrays.allowscalar(false) # Makes sure no slow operations are occuring
 #config = Dict()
 #config["dx"] = 0.005
 #config["x"] = 0.0:config["dx"]:1.0
 
 println("Threads: ",Threads.nthreads())
 
-c, c0 = velocity_model()
-
-plot(c)
-
-set_config!(config, c)
-
-js = argmin(abs.(config["x"] .- config["x_s"]))
-S = zero(c)
-S[2:200]
-w = ricker(0.1, 10)
-S[js] = 1/ config["dx"]
-function setS(t)
+function setS(S, t)
     S .* ricker(t,10)
 end
 
-NS = length(config["x"])-1
-setS(0.2)
 
 function set_matrics_ode(c)
     NS = size(c,1)-1
@@ -63,27 +51,29 @@ function set_matrics_ode(c)
 end
 
 
-U0 = zeros(2*NS)
-dx = config["dx"]
 function wave(u, p, t)
-    (c0, M, K, MI) = p
+    (c, M, K, MI, S) = p
     NS = size(c,1)-1
     U = u[1:NS+1]
     V = u[NS+2:end]
-    S1 = setS(t)
+    S1 = setS(S, t)
+    dx = config["dx"]
     du0dt = c[1]*(2/dx*(U[2]-U[1]) - V[1]/c[2])
     duNdt = c[NS+1]*(2/dx*(U[NS]-U[NS+1]) - V[NS-1]/c[NS])
     W = MI * (S1[2:NS] - (K * U))
     vcat([du0dt], V, [duNdt], W)
 end
 
-function forward_ODE_driver(c)
+function forward_ODE_driver(c, S)
     tspan = (0.0,3.0)
     M, K, MI = set_matrics_ode(c)
-    p = (c, M, K, MI)
+    p = (c, M, K, MI, S)
+    NS = size(c,1)-1
+    U0 = zeros(2*NS) |> gpu
+    dx = config["dx"]
     prob = ODEProblem(wave, U0, tspan, p, saveat=config["dt"])
     #sol = solve(prob, Tsit5(), saveat=config["dt"])
-    sol = solve(prob, Vern7(), saveat=config["dt"])
+    sol = gpu(solve(prob, Vern7(), saveat=config["dt"]))
     res = Array(sol)
     Z = transpose(res[1:NS+1,:])
     #heatmap(Z)
@@ -91,106 +81,149 @@ function forward_ODE_driver(c)
     Z, traces
 end
 
-U, traces = forward_ODE_driver(c)
-heatmap(U)
-savefig(output_figures*"heatmap_ODE.png")
-plot(traces[1,:])
-plot!(traces[2,:])
-plot!(traces[3,:])
-savefig(output_figures*"plot_ODE_traces.png")
+function forward_ODE_test()
+    c, c0 = velocity_model()
+    plot(c)
+    set_config!(config, c)
+    js = argmin(abs.(config["x"] .- config["x_s"]))
+    S = zero(c)
+    S[js] = 1/ config["dx"]
+    U, traces = forward_ODE_driver(c, S)
+    heatmap(U)
+    savefig(output_figures*"heatmap_ODE.png")
+    plot(traces[1,:])
+    plot!(traces[2,:])
+    plot!(traces[3,:])
+    savefig(output_figures*"plot_ODE_traces.png")
+    U, traces
+end
+
+#U, Traces = forward_ODE_test()
 
 ###### SciML using ANN #######
 
-ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
-p = initial_params(ann)
-M, K, MI = set_matrics_ode(c)
-
 function wave_ann(u, p, t)
-    #(c0, M, K, MI, ap) = p
+    #(c, M, K, MI, S, p_ann) = p
     NS = size(c,1)-1
     U = u[1:NS+1]
     V = u[NS+2:end]
-    S1=setS(t)
+    S1=setS(S, t)
+    dx = config["dx"]
     du0dt = c[1]*(2/dx*(U[2]-U[1])) - ann(Float32[V[1],c[1],c[2]],p)[1]  #c[1]*(2/dx*(U[2]-U[1]) - V[1]/c[2])
     duNdt = c[NS+1]*(2/dx*(U[NS]-U[NS+1]) - V[NS-1]/c[NS])
     W = MI * (S1[2:NS] - (K * U))
     vcat(du0dt, V, duNdt, W)
 end
 
-NS = size(c,1)-1
-U0 = zeros(2*NS)
-tspan = (0.0,1.0)
-prob_nn = ODEProblem(wave_ann, U0, tspan, p)
-
-function forward_ann(θ)
-    res = Array(solve(prob_nn, Tsit5(), u0=U0, p=θ, saveat = config["dt"],
+function forward_ann(θ, prob_nn, U0)
+    res = Array(gpu(solve(prob_nn, Tsit5(), u0=U0, p=θ, saveat = config["dt"],
                          abstol=1e-6, reltol=1e-6,
-                         sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP())))
+                         sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP()))))
     Z0 = transpose(res[1:NS+1,:])
     tra = record_data(Z0)
     Z0, tra
 end
 
-Z0, tr = forward_ann(p)
-heatmap(Z0)
-plot(traces[1,:])
-plot!(tr[1,:])
+function SciML_Wave_1D_Training(U, Traces)
+    ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
+    p_ann = initial_params(ann) |> gpu
 
-# No regularisation right now
-function loss(θ)
-    U0, t0 = forward_ann(θ)
-    #print(size(t0),size(traces))
-#    sum(abs2, traces[:,size(t0,2)] .- t0), t0 # + 1e-5*sum(sum.(abs, params(ann)))
-    sum(abs2, U[1:size(U0,1),1:size(U0,2)] .- U0),U0 # + 1e-5*sum(sum.(abs, params(ann)))
-end
+    c, c0 = velocity_model()
+    set_config!(config, c)
+    M, K, MI = set_matrics_ode(c)
 
-loss(p)
+    NS = size(c,1)-1
+    U0 = zeros(2*NS) |> gpu
+    tspan = (0.0,1.0)
+    js = argmin(abs.(config["x"] .- config["x_s"]))
+    S = zero(c)
+    S[js] = 1/ config["dx"]
 
-const losses1 = []
-callback(θ,l,pred) = begin
-    push!(losses1, l)
-    if length(losses1)%1==0
-        println(length(losses1), ": ", losses1[end])
+    prob_nn = ODEProblem(wave_ann, U0, tspan, p_ann)
+
+    # No regularisation right now
+    function loss(θ)
+        #p = [c, M, K, MI, S, θ]
+        U1, t0 = forward_ann(θ, prob_nn, U0)
+        #print(size(t0),size(traces))
+        sum(abs2, Traces[1:size(t0,1),size(t0,2)] .- t0), t0 # + 1e-5*sum(sum.(abs, params(ann)))
+        #sum(abs2, U[1:size(U1,1),1:size(U1,2)] .- U1),U1 # + 1e-5*sum(sum.(abs, params(ann)))
     end
-    false
+
+    loss(p_ann)
+
+    losses = []
+    callback(θ,l,pred) = begin
+        push!(losses, l)
+        if length(losses)%1==0
+            println(length(losses), ": ", losses[end])
+        end
+        false
+    end
+
+    Z0, tr = forward_ann(p_ann, prob_nn, U0)
+    heatmap(Z0)
+    plot(tr[1,:])
+
+    res1 = DiffEqFlux.sciml_train(loss, p_ann, ADAM(0.01), cb=callback, maxiters = 100)
+    weights = res1.minimizer
+    @save output_models*"fwi_1d_nn.jld2" ann weights
+    Z0, tr = forward_ann(res1.minimizer, prob_nn, U0)
+    heatmap(Z0)
+    savefig(output_figures*"heatmap_ODE_ann_1.png")
+    plot(tr[1,:])
+    plot!(tr[2,:])
+    plot!(tr[3,:])
+    savefig(output_figures*"plot_ODE_ann_traces_1.png")
+    # Plot the losses
+    plot(losses, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
+    savefig(output_figures*"loss.png")
+
+    res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
+    # Plot the losses
+    plot(losses1, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
+    savefig(output_figures*"loss.png")
+
+    display(res2.minimizer)
+    Z0, tr = forward_ann(res2.minimizer)
+    heatmap(Z0)
+    savefig(output_figures*"heatmap_ODE_ann.png")
+    plot(tr[1,:])
+    plot!(tr[2,:])
+    plot!(tr[3,:])
+    savefig(output_figures*"plot_ODE_ann_traces.png")
+
+    weights = res2.minimizer
+    @save output_models*"fwi_1d_nn.jld2" ann weights
 end
 
-res1 = DiffEqFlux.sciml_train(loss, p, ADAM(0.01), cb=callback, maxiters = 100)
-weights = res1.minimizer
-@save output_models*"fwi_1d_nn.jld2" ann weights
-Z0, tr = forward_ann(res1.minimizer)
-heatmap(Z0)
-savefig(output_figures*"heatmap_ODE_ann_1.png")
-plot(tr[1,:])
-plot!(tr[2,:])
-plot!(tr[3,:])
-savefig(output_figures*"plot_ODE_ann_traces_1.png")
-# Plot the losses
-plot(losses1, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
-savefig(output_figures*"loss.png")
+#SciML_Wave_1D_Training(U, Traces)
 
+function SciML_Wave_1D_Test()
+    @load output_models*"fwi_1d_nn.jld2" ann weights
+    c, c0 = velocity_model()
+    set_config!(config, c)
+    M, K, MI = set_matrics_ode(c)
 
-res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
-# Plot the losses
-plot(losses1, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
-savefig(output_figures*"loss.png")
+    NS = size(c,1)-1
+    U0 = zeros(2*NS)
+    tspan = (0.0,1.0)
+    js = argmin(abs.(config["x"] .- config["x_s"]))
+    S = zero(c)
+    S[js] = 1/ config["dx"]
 
-display(res2.minimizer)
-Z0, tr = forward_ann(res2.minimizer)
-heatmap(Z0)
-savefig(output_figures*"heatmap_ODE_ann.png")
-plot(tr[1,:])
-plot!(tr[2,:])
-plot!(tr[3,:])
-savefig(output_figures*"plot_ODE_ann_traces.png")
+    prob_nn = ODEProblem(wave_ann, U0, tspan, weights)
 
-weights = res2.minimizer
-@save output_models*"fwi_1d_nn.jld2" ann weights
-@load output_models*"fwi_1d_nn.jld2" ann weights
+    Z0, tr = forward_ann(weights, prob_nn, U0)
+    heatmap(Z0)
+    savefig(output_figures*"test_heatmap_ODE_ann.png")
+    plot(tr[1,:])
+    plot!(tr[2,:])
+    plot!(tr[3,:])
+    savefig(output_figures*"test_plot_ODE_ann_traces.png")
+end
 
-Z0, tr = forward_ann(weights)
-heatmap(Z0)
-
+#SciML_Wave_1D_Test()
 ####### Optimization ############
 
 function F_ODE(c0)
@@ -207,19 +240,22 @@ function F_ODE(c0)
     sum((traces.-tr).^2)
 end
 
-F_ODE(c0)
+function F_ODE_inv()
+    c, c0 = velocity_model()
+    set_config!(config, c)
+    plot(c0)
+    plot!(c)
 
-plot(c0)
+    res = optimize(
+        F_ODE,
+        c0,
+        LBFGS(),
+        Optim.Options(show_trace = true, iterations = 5, store_trace=true, f_tol=1e-8),
+    )
 
-res = optimize(
-    F_ODE,
-    c0,
-    LBFGS(),
-    Optim.Options(show_trace = true, iterations = 5, store_trace=true, f_tol=1e-8),
-)
-
-summary(res)
-Optim.minimum(res)
-plot(res.minimizer)
-plot!(c)
-savefig(output_figures*"plot_ODE_optim.png")
+    summary(res)
+    Optim.minimum(res)
+    plot(res.minimizer)
+    plot!(c)
+    savefig(output_figures*"plot_ODE_optim.png")
+end
