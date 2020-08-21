@@ -73,7 +73,7 @@ function forward_ODE_driver(c, S)
     dx = config["dx"]
     prob = ODEProblem(wave, U0, tspan, p, saveat=config["dt"])
     #sol = solve(prob, Tsit5(), saveat=config["dt"])
-    sol = gpu(solve(prob, Vern7(), saveat=config["dt"]))
+    sol = solve(prob, Vern7(), saveat=config["dt"])
     res = Array(sol)
     Z = transpose(res[1:NS+1,:])
     #heatmap(Z)
@@ -86,7 +86,7 @@ function forward_ODE_test()
     plot(c)
     set_config!(config, c)
     js = argmin(abs.(config["x"] .- config["x_s"]))
-    S = zero(c)
+    S = zero(c) |> gpu
     S[js] = 1/ config["dx"]
     U, traces = forward_ODE_driver(c, S)
     heatmap(U)
