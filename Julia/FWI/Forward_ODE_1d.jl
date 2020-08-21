@@ -66,10 +66,10 @@ end
 
 function forward_ODE_driver(c, S)
     tspan = (0.0,3.0)
-    M, K, MI = set_matrics_ode(c) |> gpu
+    M, K, MI = set_matrics_ode(c)
     p = (c, M, K, MI, S)
     NS = size(c,1)-1
-    U0 = zeros(2*NS) |> gpu
+    U0 = zeros(2*NS) 
     dx = config["dx"]
     prob = ODEProblem(wave, U0, tspan, p, saveat=config["dt"])
     #sol = solve(prob, Tsit5(), saveat=config["dt"])
@@ -82,11 +82,11 @@ function forward_ODE_driver(c, S)
 end
 
 function forward_ODE_test()
-    c, c0 = velocity_model() |> gpu
+    c, c0 = velocity_model()
     plot(c)
     set_config!(config, c)
     js = argmin(abs.(config["x"] .- config["x_s"]))
-    S = zero(c) |> gpu
+    S = zero(c)
     S[js] = 1/ config["dx"]
     U, traces = forward_ODE_driver(c, S)
     heatmap(U)
