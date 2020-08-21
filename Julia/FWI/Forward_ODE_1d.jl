@@ -18,7 +18,7 @@ include("Forward_1d.jl")
 
 output_figures="Figures/"
 output_models="Models/"
-CuArrays.allowscalar(false) # Makes sure no slow operations are occuring
+#CuArrays.allowscalar(false) # Makes sure no slow operations are occuring
 #config = Dict()
 #config["dx"] = 0.005
 #config["x"] = 0.0:config["dx"]:1.0
@@ -101,6 +101,12 @@ end
 #U, Traces = forward_ODE_test()
 
 ###### SciML using ANN #######
+c, c0 = velocity_model() |> gpu
+set_config!(config, c)
+M, K, MI = set_matrics_ode(c) |> gpu
+js = argmin(abs.(config["x"] .- config["x_s"]))
+S = zero(c) |> gpu
+S[js] = 1/ config["dx"]
 
 function wave_ann(u, p, t)
     #(c, M, K, MI, S, p_ann) = p
@@ -128,17 +134,9 @@ function SciML_Wave_1D_Training(U, Traces)
     ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
     p_ann = initial_params(ann)
 
-    c, c0 = velocity_model()
-    set_config!(config, c)
-    M, K, MI = set_matrics_ode(c)
-
     NS = size(c,1)-1
     U0 = zeros(2*NS)
     tspan = (0.0,1.0)
-    js = argmin(abs.(config["x"] .- config["x_s"]))
-    S = zero(c)
-    S[js] = 1/ config["dx"]
-
     prob_nn = ODEProblem(wave_ann, U0, tspan, p_ann)
 
     # No regularisation right now
