@@ -69,11 +69,11 @@ function forward_ODE_driver(c, S)
     M, K, MI = set_matrics_ode(c)
     p = (c, M, K, MI, S)
     NS = size(c,1)-1
-    U0 = zeros(2*NS) |> gpu
+    U0 = zeros(2*NS)
     dx = config["dx"]
     prob = ODEProblem(wave, U0, tspan, p, saveat=config["dt"])
     #sol = solve(prob, Tsit5(), saveat=config["dt"])
-    sol = gpu(solve(prob, Vern7(), saveat=config["dt"]))
+    sol = solve(prob, Vern7(), saveat=config["dt"])
     res = Array(sol)
     Z = transpose(res[1:NS+1,:])
     #heatmap(Z)
@@ -116,9 +116,9 @@ function wave_ann(u, p, t)
 end
 
 function forward_ann(θ, prob_nn, U0)
-    res = Array(gpu(solve(prob_nn, Tsit5(), u0=U0, p=θ, saveat = config["dt"],
+    res = Array(solve(prob_nn, Tsit5(), u0=U0, p=θ, saveat = config["dt"],
                          abstol=1e-6, reltol=1e-6,
-                         sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP()))))
+                         sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP())))
     Z0 = transpose(res[1:NS+1,:])
     tra = record_data(Z0)
     Z0, tra
@@ -126,14 +126,14 @@ end
 
 function SciML_Wave_1D_Training(U, Traces)
     ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
-    p_ann = initial_params(ann) |> gpu
+    p_ann = initial_params(ann)
 
     c, c0 = velocity_model()
     set_config!(config, c)
     M, K, MI = set_matrics_ode(c)
 
     NS = size(c,1)-1
-    U0 = zeros(2*NS) |> gpu
+    U0 = zeros(2*NS)
     tspan = (0.0,1.0)
     js = argmin(abs.(config["x"] .- config["x_s"]))
     S = zero(c)
