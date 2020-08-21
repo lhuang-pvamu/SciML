@@ -10,6 +10,7 @@ using DataDrivenDiffEq
 using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
+using JLD2
 #using RecursiveArrayTools
 gr()
 include("Forward_1d.jl")
@@ -20,6 +21,8 @@ output_models="Models/"
 #config = Dict()
 #config["dx"] = 0.005
 #config["x"] = 0.0:config["dx"]:1.0
+
+println("Threads: ",Threads.nthreads())
 
 c, c0 = velocity_model()
 
@@ -98,7 +101,7 @@ savefig(output_figures*"plot_ODE_traces.png")
 
 ###### SciML using ANN #######
 
-ann = FastChain(FastDense(4, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
+ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
 p = initial_params(ann)
 M, K, MI = set_matrics_ode(c)
 
@@ -108,7 +111,7 @@ function wave_ann(u, p, t)
     U = u[1:NS+1]
     V = u[NS+2:end]
     S1=setS(t)
-    du0dt = c[1]*(2/dx*(U[2]-U[1])) - ann(Float32[V[1],c[1],c[2], t],p)[1]  #c[1]*(2/dx*(U[2]-U[1]) - V[1]/c[2])
+    du0dt = c[1]*(2/dx*(U[2]-U[1])) - ann(Float32[V[1],c[1],c[2]],p)[1]  #c[1]*(2/dx*(U[2]-U[1]) - V[1]/c[2])
     duNdt = c[NS+1]*(2/dx*(U[NS]-U[NS+1]) - V[NS-1]/c[NS])
     W = MI * (S1[2:NS] - (K * U))
     vcat(du0dt, V, duNdt, W)
@@ -116,7 +119,7 @@ end
 
 NS = size(c,1)-1
 U0 = zeros(2*NS)
-tspan = (0.0,3.0)
+tspan = (0.0,1.0)
 prob_nn = ODEProblem(wave_ann, U0, tspan, p)
 
 function forward_ann(θ)
@@ -153,8 +156,21 @@ callback(θ,l,pred) = begin
 end
 
 res1 = DiffEqFlux.sciml_train(loss, p, ADAM(0.01), cb=callback, maxiters = 100)
-res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
+weights = res1.minimizer
+@save output_models*"fwi_1d_nn.jld2" ann weights
+Z0, tr = forward_ann(res1.minimizer)
+heatmap(Z0)
+savefig(output_figures*"heatmap_ODE_ann_1.png")
+plot(tr[1,:])
+plot!(tr[2,:])
+plot!(tr[3,:])
+savefig(output_figures*"plot_ODE_ann_traces_1.png")
+# Plot the losses
+plot(losses1, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
+savefig(output_figures*"loss.png")
 
+
+res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
 # Plot the losses
 plot(losses1, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
 savefig(output_figures*"loss.png")
