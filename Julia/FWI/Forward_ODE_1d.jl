@@ -69,7 +69,7 @@ function forward_ODE_driver(c, S)
     M, K, MI = set_matrics_ode(c)
     p = (c, M, K, MI, S)
     NS = size(c,1)-1
-    U0 = zeros(2*NS) 
+    U0 = zeros(2*NS)
     dx = config["dx"]
     prob = ODEProblem(wave, U0, tspan, p, saveat=config["dt"])
     #sol = solve(prob, Tsit5(), saveat=config["dt"])
@@ -101,6 +101,9 @@ end
 #U, Traces = forward_ODE_test()
 
 ###### SciML using ANN #######
+c, c0 = velocity_model() |> gpu
+set_config!(config, c)
+M, K, MI = set_matrics_ode(c) |> gpu
 
 function wave_ann(u, p, t)
     #(c, M, K, MI, S, p_ann) = p
@@ -128,9 +131,7 @@ function SciML_Wave_1D_Training(U, Traces)
     ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
     p_ann = initial_params(ann) |> gpu
 
-    c, c0 = velocity_model() |> gpu
-    set_config!(config, c)
-    M, K, MI = set_matrics_ode(c) |> gpu
+
 
     NS = size(c,1)-1
     U0 = zeros(2*NS) |> gpu
