@@ -104,6 +104,9 @@ end
 c, c0 = velocity_model() |> gpu
 set_config!(config, c)
 M, K, MI = set_matrics_ode(c) |> gpu
+js = argmin(abs.(config["x"] .- config["x_s"]))
+S = zero(c) |> gpu
+S[js] = 1/ config["dx"]
 
 function wave_ann(u, p, t)
     #(c, M, K, MI, S, p_ann) = p
@@ -131,15 +134,9 @@ function SciML_Wave_1D_Training(U, Traces)
     ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
     p_ann = initial_params(ann) |> gpu
 
-
-
     NS = size(c,1)-1
     U0 = zeros(2*NS) |> gpu
     tspan = (0.0,1.0)
-    js = argmin(abs.(config["x"] .- config["x_s"]))
-    S = zero(c) |> gpu
-    S[js] = 1/ config["dx"]
-
     prob_nn = ODEProblem(wave_ann, U0, tspan, p_ann)
 
     # No regularisation right now
