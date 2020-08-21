@@ -18,7 +18,7 @@ include("Forward_1d.jl")
 
 output_figures="Figures/"
 output_models="Models/"
-CuArrays.allowscalar(false) # Makes sure no slow operations are occuring
+#CuArrays.allowscalar(false) # Makes sure no slow operations are occuring
 #config = Dict()
 #config["dx"] = 0.005
 #config["x"] = 0.0:config["dx"]:1.0
