@@ -102,6 +102,14 @@ end
 #U, Traces = forward_ODE_test()
 
 ###### SciML using ANN #######
+c, c0 = velocity_model()
+set_config!(config, c)
+M, K, MI = set_matrics_ode(c)
+js = argmin(abs.(config["x"] .- config["x_s"]))
+S = zero(c)
+S[js] = 1/ config["dx"]
+ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
+NS = size(c,1)-1
 
 function wave_ann(u, p, t)
     #(c, M, K, MI, S, p_ann) = p
@@ -126,19 +134,11 @@ function forward_ann(θ, prob_nn, U0)
 end
 
 function SciML_Wave_1D_Training(U, Traces)
-    ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
     p_ann = initial_params(ann)
-
-    c, c0 = velocity_model()
-    set_config!(config, c)
-    M, K, MI = set_matrics_ode(c)
 
     NS = size(c,1)-1
     U0 = zeros(2*NS)
     tspan = (0.0,1.0)
-    js = argmin(abs.(config["x"] .- config["x_s"]))
-    S = zero(c)
-    S[js] = 1/ config["dx"]
 
     prob_nn = ODEProblem(wave_ann, U0, tspan, p_ann)
 
@@ -169,7 +169,9 @@ function SciML_Wave_1D_Training(U, Traces)
     res1 = DiffEqFlux.sciml_train(loss, p_ann, ADAM(0.01), cb=callback, maxiters = 100)
     weights = res1.minimizer
     #@save output_models*"fwi_1d_nn.jld2" ann weights
-    h5write(output_models*"fwi_1d_nn.h5", "weights", weights)
+    fid=h5open(output_models*"fwi_1d_nn.h5","w")
+    fid["weights"] = weights
+    close(fid)
     Z0, tr = forward_ann(res1.minimizer, prob_nn, U0)
     heatmap(Z0)
     savefig(output_figures*"heatmap_ODE_ann_1.png")
@@ -197,7 +199,9 @@ function SciML_Wave_1D_Training(U, Traces)
 
     weights = res2.minimizer
     #@save output_models*"fwi_1d_nn.jld2" ann weights
-    h5write(output_models*"fwi_1d_nn.h5", "weights", weights)
+    fid=h5open(output_models*"fwi_1d_nn.h5","w")
+    fid["weights"] = weights
+    close(fid)
 end
 
 #SciML_Wave_1D_Training(U, Traces)

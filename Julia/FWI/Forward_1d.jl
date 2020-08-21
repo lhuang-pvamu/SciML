@@ -164,9 +164,9 @@ function Forward_Driver()
     Ux, tr
 end
 
-U, tr = Forward_Driver()
-heatmap(U)
-plot(transpose(tr))
+#U, tr = Forward_Driver()
+#heatmap(U)
+#plot(transpose(tr))
 
 function F(c0)
     M, A, Kxx, Kx, S, R, RI = set_matrics(c0)
