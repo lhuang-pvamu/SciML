@@ -12,6 +12,7 @@ using DiffEqFlux, Flux
 using Plots
 using JLD2
 using CuArrays
+using HDF5
 #using RecursiveArrayTools
 gr()
 include("Forward_1d.jl")
@@ -167,7 +168,8 @@ function SciML_Wave_1D_Training(U, Traces)
 
     res1 = DiffEqFlux.sciml_train(loss, p_ann, ADAM(0.01), cb=callback, maxiters = 100)
     weights = res1.minimizer
-    @save output_models*"fwi_1d_nn.jld2" ann weights
+    #@save output_models*"fwi_1d_nn.jld2" ann weights
+    h5write(output_models*"fwi_1d_nn.h5", "weights", weights)
     Z0, tr = forward_ann(res1.minimizer, prob_nn, U0)
     heatmap(Z0)
     savefig(output_figures*"heatmap_ODE_ann_1.png")
@@ -194,13 +196,16 @@ function SciML_Wave_1D_Training(U, Traces)
     savefig(output_figures*"plot_ODE_ann_traces.png")
 
     weights = res2.minimizer
-    @save output_models*"fwi_1d_nn.jld2" ann weights
+    #@save output_models*"fwi_1d_nn.jld2" ann weights
+    h5write(output_models*"fwi_1d_nn.h5", "weights", weights)
 end
 
 #SciML_Wave_1D_Training(U, Traces)
 
 function SciML_Wave_1D_Test()
-    @load output_models*"fwi_1d_nn.jld2" ann weights
+    #@load output_models*"fwi_1d_nn.jld2" ann weights
+    ann = FastChain(FastDense(3, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
+    weights = h5read(output_models*"fwi_1d_nn.h5", "weights")
     c, c0 = velocity_model()
     set_config!(config, c)
     M, K, MI = set_matrics_ode(c)
