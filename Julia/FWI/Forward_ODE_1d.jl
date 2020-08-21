@@ -134,7 +134,11 @@ function forward_ann(θ, prob_nn, U0)
 end
 
 function SciML_Wave_1D_Training(U, Traces)
-    p_ann = initial_params(ann)
+    if isfile(output_models*"fwi_1d_nn.h5")
+        p_ann = h5read(output_models*"fwi_1d_nn.h5", "weights")        
+    else
+        p_ann = initial_params(ann)
+    end
 
     NS = size(c,1)-1
     U0 = zeros(2*NS)
@@ -185,11 +189,10 @@ function SciML_Wave_1D_Training(U, Traces)
 
     res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
     # Plot the losses
-    plot(losses1, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
+    plot(losses, yaxis = :log, xaxis = :log, xlabel = "Iterations", ylabel = "Loss")
     savefig(output_figures*"loss.png")
 
-    display(res2.minimizer)
-    Z0, tr = forward_ann(res2.minimizer)
+    Z0, tr = forward_ann(res2.minimizer, prob_nn, U0)
     heatmap(Z0)
     savefig(output_figures*"heatmap_ODE_ann.png")
     plot(tr[1,:])
@@ -216,7 +219,7 @@ function SciML_Wave_1D_Test()
 
     NS = size(c,1)-1
     U0 = zeros(2*NS)
-    tspan = (0.0,1.0)
+    tspan = (0.0,3.0)
     js = argmin(abs.(config["x"] .- config["x_s"]))
     S = zero(c)
     S[js] = 1/ config["dx"]
