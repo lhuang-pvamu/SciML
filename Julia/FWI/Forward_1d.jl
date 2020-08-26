@@ -10,7 +10,11 @@ using DataDrivenDiffEq
 using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
+using CUDAdrv;
+using CuArrays
+using GPUArrays
 gr()
+#CUDAdrv.name(CuDevice(0))
 
 config = Dict()
 config["dx"] = 0.005
@@ -26,7 +30,7 @@ function set_config!(config, c)
     # Source position(s)
     config["x_s"] = 0.1
     # Receiver position(s)
-    config["x_r"] = [0.2, 0.4, 0.6]
+    config["x_r"] = 0.1:0.05:0.9 #[0.2, 0.4, 0.6]
     config["recr_m"] = zeros(length(config["x_r"]), length(config["x"]))
     for i = 1:length(config["x_r"])
         jr = argmin(abs.(config["x"] .- config["x_r"][i]))
@@ -148,15 +152,15 @@ end
 #plot!(traces[3, :])
 
 function Forward_Driver()
-    c, c0 = velocity_model()
+    c, c0 = velocity_model() |> gpu
     set_config!(config, c)
     NS = length(config["x"])
     plot(c)
     plot!(c0)
     NT = length(config["t"])
-    w = ricker(config["t"], 10.0)
+    w = ricker(config["t"], 10.0) |> gpu
     plot(config["t"], w)
-    M, A, Kxx, Kx, S, R, RI = set_matrics(c)
+    M, A, Kxx, Kx, S, R, RI = set_matrics(c) |> gpu
     Ux = forward(NT, NS, M, A, Kxx, Kx, config["dt"], w, S, RI)
     tr = record_data(Ux)
     heatmap(Ux)
@@ -164,9 +168,9 @@ function Forward_Driver()
     Ux, tr
 end
 
-#U, tr = Forward_Driver()
-#heatmap(U)
-#plot(transpose(tr))
+U, tr = Forward_Driver()
+heatmap(U)
+plot(transpose(tr))
 
 function F(c0)
     M, A, Kxx, Kx, S, R, RI = set_matrics(c0)
