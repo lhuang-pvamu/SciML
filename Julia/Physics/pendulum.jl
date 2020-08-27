@@ -13,6 +13,7 @@ using Plots
 #using BSON: @load, @save
 using Zygote
 using JLD2
+using HDF5
 gr()
 
 output_figures="Figures/"
@@ -21,10 +22,21 @@ output_models="Models/"
 g=9.8
 L=2.0
 mu=0.1
+mu1 = 0.1
+mu2 = 0.5
+mu3 = 1.3
 results=[]
 
+function poly_friction(θ_dot)
+    -(mu1*θ_dot^2 + mu2*θ_dot + mu3)
+end
+
+function linear_friction(θ_dot)
+    -mu*θ_dot
+end
+
 function get_double_theta_dot(θ, θ_dot)
-    -mu*θ_dot - (g/L)*sin(θ)
+    ploy_friction(θ_dot) - (g/L)*sin(θ)
 end
 
 function pendulum_solver(θ, θ_dot, t)
@@ -38,7 +50,7 @@ function pendulum_solver(θ, θ_dot, t)
     θ
 end
 
-theta = pendulum_solver(pi/2, 0, 10.0)
+theta = pendulum_solver(pi/2, 0, 20.0)
 
 plot(results)
 savefig(output_figures*"plot_fd.png")
@@ -52,12 +64,12 @@ function pendulum_ode(u, p, t)
     θ_dot = u[2]
     mu = p[1]
     L = p[2]
-    [θ_dot, -mu*θ_dot - (g/L)*sin(θ)]
+    [θ_dot, poly_friction(θ_dot) - (g/L)*sin(θ)]
 end
 
 #U0 = convert(Array{Float32}, [pi/3,0])
-U0 = Float32[pi/3,0]
-tspan = (0.0,5.0)
+U0 = Float32[pi/2, 0]
+tspan = (0.0,3.0)
 Δt = 0.01
 p = Float32[0.1,2.0]
 
@@ -74,7 +86,7 @@ savefig(output_figures*"scatter_ode.png")
 #### Neural Network
 ##########################
 
-ann = FastChain(FastDense(1, 32, tanh),FastDense(32, 1))
+ann = FastChain(FastDense(1, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
 p_ann = initial_params(ann)
 
 function nn_ode(u, p, t)
@@ -133,20 +145,25 @@ savefig(output_figures*"plot_nn.png")
 scatter(NNsolution[1,:],NNsolution[2,:])
 savefig(output_figures*"scatter_nn.png")
 weights = res2.minimizer
-@save output_models*"pendulum_nn.jld2" ann weights
-@load output_models*"pendulum_nn.jld2" ann weights
+#@save output_models*"pendulum_nn.jld2" ann weights
+#@load output_models*"pendulum_nn.jld2" ann weights
+
+fid=h5open(output_models*"pendulum_nn.h5","w")
+fid["weights"] = weights
+close(fid)
 
 NNsolution = predict(weights)
 plot(NNsolution')
 plot!(res')
 
-ann = FastChain(FastDense(1, 32, tanh),FastDense(32, 1))
-weights = initial_params(ann)
+ann = FastChain(FastDense(1, 32, tanh),FastDense(32, 32, tanh),FastDense(32, 1))
+#weights = initial_params(ann)
 
-@load output_models*"pendulum_nn.jld2" ann weights
+#@load output_models*"pendulum_nn.jld2" ann weights
+weights = h5read(output_models*"fwi_1d_nn.h5", "weights")
 
 U0 = Float32[pi-0.01,0]
-tspan = (0.0,60.0)
+tspan = (0.0,40.0)
 Δt = 0.01
 p = Float32[0.1,2.0]
 
