@@ -1,6 +1,7 @@
 cd(@__DIR__)
-#using Pkg;
+using Pkg;
 #Pkg.activate(".");
+#Pkg.activate("~/.julia/environments/v1.5/Project.toml");
 #Pkg.instantiate();
 
 using DifferentialEquations
@@ -22,7 +23,7 @@ output_models="Models/"
 g = 9.81                            # gravitational acceleration [m/s²]
 L=2.0
 mu=0.1
-mu1 = 0.01
+mu1 = 0.1
 mu2 = 0.2
 mu3 = 1.3
 results=[]
@@ -55,9 +56,9 @@ theta = pendulum_solver(pi/2, 0, 20.0)
 plot(results)
 savefig(output_figures*"plot_fd.png")
 
-####################
-# use ODE solver
-####################
+##################################
+# use ODE solver with friction
+#################################
 
 function pendulum_ode(u, p, t)
     θ = u[1]
@@ -69,7 +70,7 @@ end
 
 #U0 = convert(Array{Float32}, [pi/3,0])
 U0 = Float32[pi/2, 0.0]
-tspan = (0.0,30.0)
+tspan = (0.0,10.0)
 Δt = 0.1
 p = Float32[0.1,L]
 
@@ -80,7 +81,7 @@ data = Array(sol)
 plot(data[1,:])
 #plot!(res[2,:])
 savefig(output_figures*"plot_ode.png")
-scatter(data[1,:], data[2,:])
+plot(data[1,:], data[2,:], marker = :hex)
 savefig(output_figures*"scatter_ode.png")
 
 x = L*sin.(data[1,:])
@@ -89,7 +90,7 @@ anim = @animate for i ∈ 1:1:length(x)
     plot([(0,0),(x[i],y[i])], marker = :hex, xlims=(-3,3), ylims=(-2.5,0.5),
     title="$(round((i-1)*Δt,digits=1)) second", legend = false)
 end
-gif(anim, "anim_fps30.gif", fps = 10)
+gif(anim, "anim_friction.gif", fps = 10)
 
 
 ####################################
@@ -116,7 +117,10 @@ prob = ODEProblem(pendulum!,u₀,tspan,M)
 sol = solve(prob, Tsit5(), saveat=Δt)
 data = Array(sol)
 plot(sol,linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
-scatter(data[1,:], data[2,:])
+savefig(output_figures*"pendulum_torque_10_01.png")
+#scatter(data[1,:], data[2,:])
+plot(data[1,:], data[2,:], marker = :hex)
+savefig(output_figures*"scatter_torque_10_01.png")
 
 x = L*sin.(data[1,:])
 y = -L*cos.(data[1,:])
@@ -126,7 +130,7 @@ anim = @animate for i ∈ 1:1:length(x)
     title="$(round((i-1)*0.1,digits=1)) second", legend = false)
 end
 
-gif(anim, "anim_fps10.gif", fps = 10)
+gif(anim, "anim_torque_10.gif", fps = 10)
 
 #############################################
 #### Universal Neural Differential Equation
@@ -150,8 +154,11 @@ end
 prob_nn = ODEProblem(nn_ode, U0, tspan, p_ann)
 s = solve(prob_nn, Tsit5(), saveat = Δt)
 
-plot(Array(s)')
-plot!(data')
+#plot(Array(s)')
+#plot!(data')
+plot(s,linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+plot!(sol,linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+savefig(output_figures*"initial_nn.png")
 
 function predict(θ)
     Array(solve(prob_nn, Vern7(), u0=U0, p=θ, saveat = Δt,
@@ -190,17 +197,18 @@ savefig(output_figures*"loss.png")
 # Plot the data and the approximation
 NNsolution = predict(res2.minimizer)
 # Trained on noisy data vs real solution
-plot(NNsolution')
-plot!(data')
-savefig(output_figures*"plot_nn.png")
-scatter(NNsolution[1,:],NNsolution[2,:])
-savefig(output_figures*"scatter_nn.png")
+#plot(NNsolution')
+#plot!(data')
+plot(NNsolution',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+savefig(output_figures*"plot_nn_10s_01.png")
+plot(NNsolution[1,:],NNsolution[2,:],marker=:hex)
+savefig(output_figures*"scatter_nn_10s_01.png")
 weights = res2.minimizer
 #@save output_models*"pendulum_nn.jld2" ann weights
 #@load output_models*"pendulum_nn.jld2" ann weights
 plot(NNsolution',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
 plot!(data',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
-
+savefig(output_figures*"comp_ode_nn_10s_01.png")
 
 fid=h5open(output_models*"pendulum_nn.h5","w")
 fid["weights"] = weights
@@ -219,7 +227,7 @@ weights = h5read(output_models*"pendulum_nn.h5", "weights")
 # extend to 20 seconds with Δt=0.01
 
 U0 = Float32[pi/2,0.0]
-tspan = (0.0,20.0)
+tspan = (0.0,30.0)
 Δt = 0.01
 p = Float32[0.1,2.0]
 
@@ -227,9 +235,10 @@ prob_nn = ODEProblem(nn_ode, U0, tspan, weights)
 s = solve(prob_nn, Tsit5(), saveat = Δt)
 res = Array(s)
 plot(res[1,:])
-savefig(output_figures*"plot_nn.png")
-scatter(res[1,:],res[2,:])
-savefig(output_figures*"scatter_nn.png")
+plot(s,linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+savefig(output_figures*"plot_nn_30s_001.png")
+plot(res[1,:],res[2,:], marker=:hex)
+savefig(output_figures*"scatter_nn_30s_001.png")
 
 prob = ODEProblem(pendulum!,U0,tspan,M)
 sol = solve(prob, Tsit5(), saveat=Δt)
@@ -238,7 +247,7 @@ data = Array(sol)
 # results should match data
 plot(res',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
 plot!(data',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
-
+savefig(output_figures*"comp_data_nn_30s_001.png")
 # display what the neural network ann learned
 
 θ_dot_range = -3:0.1:3.0
@@ -249,8 +258,9 @@ torque(x,y) = poly_friction(y) + 3/(m*L^2)*2.0*cos(x)
 torque_diff(x,y) = torque(x,y) - torque_ann(x,y)
 surface(θ_range, θ_dot_range, torque)
 surface!(θ_range, θ_dot_range, torque_ann)
+savefig(output_figures*"comp_torque_nn.png")
 surface(θ_range, θ_dot_range, torque_diff)
-
+savefig(output_figures*"diff_torque_nn.png")
 ##################################
 ##  Optimize for initial values
 ##################################
