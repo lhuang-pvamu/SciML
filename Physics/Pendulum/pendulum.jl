@@ -1,21 +1,21 @@
 cd(@__DIR__)
 using Pkg;
-#Pkg.activate(".");
+Pkg.activate("..");
 #Pkg.activate("~/.julia/environments/v1.5/Project.toml");
-#Pkg.instantiate();
+Pkg.instantiate();
 
-using DifferentialEquations
+using DifferentialEquations, Flux, Optim, DiffEqFlux, DiffEqSensitivity
 using OrdinaryDiffEq
 using ModelingToolkit
 using DataDrivenDiffEq
-using LinearAlgebra, DiffEqSensitivity, Optim
-using DiffEqFlux
-using Flux
+using LinearAlgebra
 using Plots
 using Zygote
 using HDF5
 using BSON: @save,@load
 using Surrogates
+using NPZ
+using ImageFiltering
 gr()
 
 output_figures="Figures/"
@@ -24,7 +24,7 @@ output_models="Models/"
 g = 9.81                            # gravitational acceleration [m/s²]
 L=2.0
 mu=0.1
-mu1 = 0.1
+mu1 = 0.5
 mu2 = 0.2
 mu3 = 1.3
 results=[]
@@ -58,6 +58,29 @@ theta = pendulum_solver(pi/2, 0.0, 20.0)
 plot(results)
 savefig(output_figures*"plot_fd.png")
 
+#-----------
+# get θ and θ̂ from video data
+#-----------
+
+L = 0.57
+Δt = 1/60.0
+angles0 = npzread("Data/angles.npy")
+angles0_hat = [(angles0[i]-angles0[i-1])/Δt for i=2:length(angles0)]
+ker = ImageFiltering.Kernel.gaussian((3,))
+angles0_hat = imfilter(angles0_hat, ker)
+pushfirst!(angles0_hat, angles0_hat[1])
+angles0 = (hcat(angles0,angles0_hat))'
+plot(angles0')
+#θ = angles0[29:300]
+#θ̂ = [(θ[i]-θ[i-1])/Δt for i=2:length(θ)]
+#pushfirst!(θ̂, 0.0)
+#angles = (hcat(θ,θ̂))'
+angles = angles0[:,29:300]
+plot(angles')
+print(angles[1])
+tspan = (0.0, length(angles[1,:])/60.0)
+u0 = angles[:,1]
+
 ##################################
 # use ODE solver with friction
 #################################
@@ -72,6 +95,7 @@ end
 
 #U0 = convert(Array{Float32}, [pi/3,0])
 U0 = Float32[pi/2, 0.0]
+U0 = u0
 tspan = (0.0,10.0)
 Δt = 0.1
 p = Float32[0.1,L]
@@ -80,7 +104,8 @@ prob = ODEProblem(pendulum_ode, U0, tspan, p)
 sol = solve(prob, Tsit5(), saveat=Δt)
 data = Array(sol)
 
-plot(data[1,:])
+plot(data')
+plot!(angles0[:,29:end]')
 #plot!(res[2,:])
 savefig(output_figures*"plot_ode.png")
 plot(data[1,:], data[2,:], marker = :hex)
@@ -169,31 +194,42 @@ gif(anim, output_figures*"anim_torque_10.gif", fps = 10)
 #### Learn the torque (time independant) and the polynomial friction
 #############################################
 
-ann = FastChain(FastDense(4, 64, tanh),FastDense(64, 64, tanh),FastDense(64, 1))
-p_ann = initial_params(ann)
-U0 = Float32[pi/2, 0.0]
+#ann = FastChain(FastDense(4, 64, tanh),FastDense(64, 64, tanh),FastDense(64, 1))
+ann = FastChain(FastDense(2,64,tanh), FastDense(64, 64, tanh),FastDense(64,1))
+if isfile(output_models*"pendulum_nn.h5")
+    p_ann = h5read(output_models*"pendulum_nn.h5", "weights")
+else
+    p_ann = initial_params(ann)
+end
+
+#U0 = Float32[pi/2, 0.0]
+U0 = angles[:,1]
 m = 1.0
+last = 200
+data = angles0[:,29:last]
 function nn_ode(u, p, t)
     θ = u[1]
     θ_dot = u[2]
-    torque = ann([θ_dot, m, L, θ], p)
+    #torque = ann([θ_dot, m, L, θ], p)
+    torque = ann([θ_dot, L], p)
     [θ_dot, torque[1] - (g/L)*sin(θ)]
 end
 
 #p = [2.0, p_ann]
 #p = p_ann
-
+Δt = 1/60.0
+tspan = (0.0, length(angles0[1,29:last])/60.0)
 prob_nn = ODEProblem(nn_ode, U0, tspan, p_ann)
 s = solve(prob_nn, Tsit5(), saveat = Δt)
 
 #plot(Array(s)')
 #plot!(data')
-plot(s,linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
-plot!(sol,linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+plot(Array(s)',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+plot!(angles0[:,29:last]',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
 savefig(output_figures*"initial_nn.png")
 
 function predict(θ)
-    Array(solve(prob_nn, Vern7(), u0=U0, p=θ, saveat = Δt,
+    Array(solve(prob_nn, Tsit5(), u0=U0, p=θ, saveat = Δt,
                          abstol=1e-6, reltol=1e-6,
                          sensealg = InterpolatingAdjoint(autojacvec=ReverseDiffVJP())))
 end
@@ -201,7 +237,7 @@ end
 # No regularisation right now
 function loss(θ)
     pred = predict(θ)
-    sum(abs2, data .- pred), pred # + 1e-5*sum(sum.(abs, params(ann)))
+    sum(abs2, data .- pred[:,1:length(data[1,:])]), pred # + 1e-5*sum(sum.(abs, params(ann)))
 end
 
 loss(p_ann)
@@ -209,7 +245,7 @@ loss(p_ann)
 const losses = []
 callback(θ,l,pred) = begin
     push!(losses, l)
-    if length(losses)%10==0
+    if length(losses)%5==0
         println(losses[end])
         pl = plot(data')
         plot!(pl, pred')
@@ -219,7 +255,7 @@ callback(θ,l,pred) = begin
 end
 
 # train using 10-second data with Δt=0.1
-res1 = DiffEqFlux.sciml_train(loss, p_ann, ADAM(0.01), cb=callback, maxiters = 100)
+res1 = DiffEqFlux.sciml_train(loss, p_ann, ADAM(0.01), cb=callback, maxiters = 1000)
 res2 = DiffEqFlux.sciml_train(loss, res1.minimizer, BFGS(initial_stepnorm=0.01), cb=callback, maxiters = 10000)
 
 # Plot the losses
@@ -238,8 +274,8 @@ savefig(output_figures*"scatter_nn_10s_01.png")
 weights = res2.minimizer
 #@save output_models*"pendulum_nn.jld2" ann weights
 #@load output_models*"pendulum_nn.jld2" ann weights
-plot(s.t, NNsolution',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
-plot!(s.t, data',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+plot(NNsolution',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+plot!(data',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
 savefig(output_figures*"comp_ode_nn_10s_01.png")
 
 fid=h5open(output_models*"pendulum_nn.h5","w")
@@ -250,7 +286,7 @@ NNsolution = predict(weights)
 plot(NNsolution')
 plot!(data')
 
-ann = FastChain(FastDense(4, 64, tanh),FastDense(64, 64, tanh),FastDense(64, 1))
+ann = FastChain(FastDense(2, 64, tanh),FastDense(64, 64, tanh),FastDense(64, 1))
 #weights = initial_params(ann)
 
 #@load output_models*"pendulum_nn.jld2" ann weights
@@ -258,16 +294,19 @@ weights = h5read(output_models*"pendulum_nn.h5", "weights")
 
 # extend to 30 seconds with Δt=0.01
 
-U0 = Float32[pi/2,0.0]
-tspan = (0.0,30.0)
-Δt = 0.01
-p = Float32[0.1,2.0]
+#U0 = Float32[pi/2,0.0]
+U0 = angles[:,1]
+tspan = (0.0,10.0)
+#Δt = 0.01
+#p = Float32[0.1,2.0]
 
 prob_nn = ODEProblem(nn_ode, U0, tspan, weights)
 s = solve(prob_nn, Tsit5(), saveat = Δt)
+#s = solve(prob_nn, Vern7(), saveat = Δt)
 res = Array(s)
 plot(res[1,:])
-plot(s,linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+plot(res',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
+plot!(angles0[:,29:end]',linewidth=2,xaxis="t",label=["θ [rad]" "ω [rad/s]"],layout=(2,1))
 savefig(output_figures*"plot_nn_30s_001.png")
 plot(res[1,:],res[2,:], marker=:hex)
 savefig(output_figures*"scatter_nn_30s_001.png")
@@ -381,8 +420,14 @@ prob = ODEProblem(pendulum!,u0,tspan,M)
 sol = solve(prob, Tsit5(), saveat=Δt)
 data = Array(sol)
 
-dudt = Chain(x->[x[1],x[2],L, m],Dense(4,32,tanh),Dense(32,2)) #, y->[y[1],y[2],g/L])
-n_ode = NeuralODE(dudt,tspan,Tsit5(),saveat=Δt,reltol=1e-7,abstol=1e-9)
+
+# Use video data
+tspan = (0.0, length(angles[1,:])/60.0)
+#dudt = Chain(x->[x[1],x[2],L, m],Dense(4,32,tanh),Dense(32,2)) #, y->[y[1],y[2],g/L])
+#x->[x[1],x[2],-g/L],
+dudt = Chain(x->[x[1],x[2],-g/L],Dense(3,32,tanh),Dense(32,2))
+u0 = angles[:,1]
+n_ode = NeuralODE(dudt,tspan,Tsit5(),saveat=Δt,reltol=1e-6,abstol=1e-7)
 if isfile(output_models*"pendulum_n_ode_weights.bson")
     @load output_models*"pendulum_n_ode_weights.bson" ps
     Flux.loadparams!(n_ode,ps)
@@ -392,18 +437,23 @@ ps = Flux.params(n_ode)
 function predict_n_ode()
   n_ode(u0)
 end
-loss_n_ode() = sum(abs2,data .- predict_n_ode())
+d = predict_n_ode()
+length(angles[1,:])
+Array(d)
+loss_n_ode() = sum(abs2, angles .- Array(predict_n_ode())[:,1:length(angles[1,:])])
 
 t = tspan[1]:Δt:tspan[2]
 
 it = Iterators.repeated((), 1000)
-opt = ADAM(0.01)
+opt = ADAM(0.001)
 cb = function () #callback function to observe training
   display(loss_n_ode())
   # plot current prediction against data
   cur_pred = predict_n_ode()
-  pl = scatter(t, data[1,:],label="data")
-  scatter!(pl,t, cur_pred[1,:],label="prediction")
+  #pl = scatter(angles[1,:],angles[2,:],label="data")
+  #scatter!(pl,cur_pred[1,:], cur_pred[2,:],label="prediction")
+  pl = plot(angles',label="data")
+  plot!(pl,cur_pred',label="prediction")
   display(plot(pl))
 end
 
@@ -412,11 +462,12 @@ cb()
 
 Flux.train!(loss_n_ode, ps, it, opt, cb = cb)
 
+tspan = (0.0, length(angles0[1,:])/60.0)
 res = n_ode(u0)
 d = hcat(res.u)
 scatter(d[1,:], d[2,:])
-plot(d[1,:])
-plot!(data[1,:])
+plot(d')
+plot!(angles0[:,29:end]')
 
 @save output_models*"pendulum_dudt.bson" dudt
 @save output_models*"pendulum_n_ode.bson" n_ode
@@ -424,8 +475,8 @@ plot!(data[1,:])
 
 L=2.0
 m=1.0
-tspan = (0.0,30.0)
-Δt = 0.01
+tspan = (0.0,10.0)
+#Δt = 0.01
 #dudt1 = Chain(x->[x[1],x[2],L, m],Dense(4,32,tanh),Dense(32,2)) #, y->[y[1],y[2],g/L])
 n_ode1 = NeuralODE(dudt,tspan,Tsit5(),saveat=Δt,reltol=1e-7,abstol=1e-9)
 
@@ -433,11 +484,14 @@ n_ode1 = NeuralODE(dudt,tspan,Tsit5(),saveat=Δt,reltol=1e-7,abstol=1e-9)
 
 Flux.loadparams!(n_ode1,ps)
 
-u0 = Float32[pi/2.0, 0.0]
+#u0 = Float32[pi/2.0, 0.0]
 res1 = n_ode1(u0)
 d1 = hcat(res1.u)
 scatter(d1[1,:], d1[2,:])
 plot(res1.t, d1[1,:])
+plot(d1')
+plot!(angles0[:,29:end]')
+
 
 prob = ODEProblem(pendulum!,u0,tspan,M)
 sol = solve(prob, Tsit5(), saveat=Δt)
