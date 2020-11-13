@@ -1,8 +1,7 @@
 cd(@__DIR__)
-#using Pkg;
-#Pkg.activate(".");
-#Pkg.activate("~/.julia/environments/v1.5/Project.toml");
-#Pkg.instantiate();
+using Pkg;
+Pkg.activate("..");
+Pkg.instantiate();
 
 using DifferentialEquations
 using OrdinaryDiffEq
@@ -26,6 +25,7 @@ g = 9.81
 #m = 30.0
 #damping = 10.0
 #anchorY = 200.0
+
 
 function spring_ode_1d(u, p, t)
     position = u[1]
@@ -98,8 +98,88 @@ anim = @animate for i ∈ 1:2:length(y)
     title="$(round((i-1)*0.1,digits=1)) second", legend = false)
 end
 
-gif(anim, output_figures*"anim_torque_10.gif", fps = 5)
+gif(anim, output_figures*"anim_torque_10.gif", fps = 10)
 
 #-----------
-# 2 springs
+# 4 springs one mass
+#         ~
+#  |~~~~~||||~~~~~~|
+#         ~
 #-----------
+
+x0=1.0
+y0=1.0
+k1=1.0
+k2=1.0
+k3=1.0
+k4=1.0
+d=0.1
+m=1.0
+
+function springs_eq(u, p, t)
+    positionX = u[1]
+    positionY = u[2]
+    velocityX = u[3]
+    velocityY = u[4]
+    (k1,k2,k3,k4,m,damping,x0,y0) = p
+    springForceX1 = -k1 * (positionX - x0)
+    springForceY1 = -k1 * (positionY - y0)
+    springForceX2 = k2 * -(positionX - x0)
+    springForceY2 = k2 * -(positionY - y0)
+    springForceX3 = -k3 * (positionX - x0)
+    springForceY3 = -k3 * (positionY - y0)
+    springForceX4 = k4 * -(positionX - x0)
+    springForceY4 = k4 * -(positionY - y0)
+    dampingForceX = damping * velocityX
+    dampingForceY = damping * velocityY
+    forceX = (springForceX1 + springForceX2 + springForceX3 + springForceX4) - dampingForceX
+    forceY = (springForceY1 + springForceY2 + springForceY3 + springForceY4) - dampingForceY
+    accelerationX = forceX/m
+    accelerationY = forceY/m
+    [velocityX, velocityY, accelerationX, accelerationY]
+end
+
+
+U0 = [1.5,1.5,1.0,2.0]
+tspan = (0.0,30.0)
+Δt = 0.1
+p = [k1,k2,k3,k4,m,d,x0,y0]
+prob = ODEProblem(springs_eq, U0, tspan, p)
+sol = solve(prob, Tsit5(), saveat=Δt)
+data = Array(sol)
+time =tspan[1]:Δt:tspan[2]
+
+plot3d(time, data[1,:],data[2,:])
+
+plt = plot3d(
+    1,
+    zlim = (0, 2),
+    ylim = (0, 2),
+    xlim = (0, 30),
+    title = "springs",
+    marker = 2,
+)
+
+@gif for i=1:301
+    push!(plt, time[i], data[1,i], data[2,i])
+end every 10
+
+plot(data[1,:],data[2,:])
+
+plt = plot(
+    1,
+    xlim = (0, 2),
+    ylim = (0, 2),
+    title = "springs",
+    marker = 2,
+)
+
+anim = @animate for i=1:301
+    #push!(plt, plot((0,0)(data[1,i], data[2,i])))
+    plot([(0,1),(data[1,i],data[2,i])], marker = :hex, xlims=(0,2), ylims=(0,2),legend=false)
+    plot!([(data[1,i],data[2,i]),(2,1)], marker = :hex, xlims=(0,2), ylims=(0,2),legend=false)
+    plot!([(data[1,i],data[2,i]),(1,2)], marker = :hex, xlims=(0,2), ylims=(0,2),legend=false)
+    plot!([(data[1,i],data[2,i]),(1,0)], marker = :hex, xlims=(0,2), ylims=(0,2),legend=false)
+end
+
+gif(anim, output_figures*"anim_4springs_10.gif", fps = 10)
