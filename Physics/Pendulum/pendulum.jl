@@ -1,7 +1,7 @@
 cd(@__DIR__)
 using Pkg;
 Pkg.activate("..");
-#Pkg.activate("~/.julia/environments/v1.5/Project.toml");
+# Pkg.activate("~/.julia/environments/v1.5/Project.toml");
 Pkg.instantiate();
 
 using DifferentialEquations, Flux, Optim, DiffEqFlux, DiffEqSensitivity
@@ -60,6 +60,7 @@ savefig(output_figures*"plot_fd.png")
 
 #-----------
 # get θ and θ̂ from video data
+
 #-----------
 
 L = 0.57

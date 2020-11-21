@@ -1,7 +1,7 @@
 cd(@__DIR__)
-#using Pkg;
-#Pkg.activate(".");
-#Pkg.instantiate();
+using Pkg;
+Pkg.activate(".");
+Pkg.instantiate();
 
 using DifferentialEquations
 using OrdinaryDiffEq
@@ -10,9 +10,9 @@ using DataDrivenDiffEq
 using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
-using CUDAdrv;
-using CuArrays
-using GPUArrays
+# using CUDAdrv
+# using CuArrays
+# using GPUArrays
 gr()
 #CUDAdrv.name(CuDevice(0))
 

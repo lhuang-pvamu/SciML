@@ -1,0 +1,6 @@
+.ipynb_checkpoints/
+*.pyc
+nn_physical_concepts*
+*.toml
+*.png
+*.gif
