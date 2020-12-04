@@ -11,66 +11,44 @@ using Plots
 
 println("NeuralPDE -- 1D wave equation with source term")
 
+# Problem definition parameters
+xbgn = 0. ;  xend = 0.6 # 6000.
+psrc = 0.1;  xsrc = (xend-xbgn)*psrc + xbgn
+tlast = 3.
+fpeak = 10.
+C= 0.2 # 2000.  # 1.
+
+nGrid = 11
+dn = 1. / (nGrid-1)  # Discretization fraction in both x and t domains
+dx = dn * (xend - xbgn)
+dt = round(dn * tlast; sigdigits=3 )
+
+# Build a Ricker wavelet with a given peak frequency (Hz)
+function ricker(t, fpeak)
+    sigmaInv = pi * fpeak * sqrt(2)
+    cut = 1.e-6
+    t0 = 6.0 / sigmaInv
+    Δt = t .- t0
+    expt = (pi * fpeak .* Δt) .^ 2
+    wv = (1.0 .- 2.0 .* expt) .* exp.(-expt)
+    abs(wv) > cut ? wv : 0.
+end
+
+# Define a wavelet at a single point in x-space
+function seisrc(x,t)
+    abs(x-xsrc) > dx ? 0. : ricker(t, fpeak)
+end
+
+#2D PDE
 @parameters x, t, θ
-#@parameters xbgn, xend, tlast
 @variables u(..)
 @derivatives Dxx''~x
 @derivatives Dtt''~t
 @derivatives Dt'~t
 
-# Build a Ricker wavelet with a given peaNeuralPDE -- 1D wave equation with source termk frequency (Hz)
-function ricker(t, fpeak)
-    sigmaInv = pi * fpeak * sqrt(2)
-    #cut = 1.e-6
-    t0 = 6.0 / sigmaInv
-    Δt = t .- t0
-    expt = (pi * fpeak .* Δt) .^ 2
-    wv = (1.0 .- 2.0 .* expt) .* exp.(-expt)
-end
-
-# Place a source wavelet sample at a position in space
-function point_source( wvlt_samp, xsrc, xbgn,dx,xend)
-    nx = Int( 1 + round( (xend-xbgn)/dx ) )
-    dx = (xend - xbgn)/(nx-1)
-    f = zeros(nx, 1)
-    # Find the first spatial sample point beyond the source location
-    ixs = 46
-    frac = 0.
-    #=
-    xpos = xsrc - xbgn
-    xndx = 1 + trunc( xpos / dx + .5 )
-    println("xpos: ",xpos," dx: ", dx, " xndx: ",xndx)
-    ixs = Int(xndx)
-    #ixs = max(1, ceil(Int,xndx)) + 1
-    # Distribute the unit amplitude proportionally
-    # between the two neighboring sample positions
-    frac = (ixs * dx - xpos) / dx
-    #print(frac, ", ", ixs, ", ", xpos)
-    =#
-    f[ixs, 1] = (1.0 - frac) * wvlt_samp
-    f[ixs-1, 1] = frac * wvlt_samp
-    #println("point_source: f=",f)
-    f
-end
-
-function seisrc(x,t)
-#=
-    wvlt_samp = ricker(t, fpeak)
-    s = point_source(wvlt_samp, x, xbgn,dx,xend)
-    s
-=#
-    s = 0.
-end
-#@register seisrc(x,t)
-
-#2D PDE
-C= 2. # 1. # 2000.  # 1.
-eqn = Dtt(u(x,t,θ)) ~ C^2*Dxx(u(x,t,θ)) # + seisrc(x,t)
+eqn = Dtt(u(x,t,θ)) ~ C^2*Dxx(u(x,t,θ)) + seisrc(x,t)
 
 # Space and time domains
-xbgn = 0. ; xend = 6. # 6000.
-tlast = 3.
-fpeak = 10.
 xdom = x ∈ IntervalDomain(xbgn,xend)
 tdom = t ∈ IntervalDomain(0.0,tlast)
 domains = [xdom,tdom]
@@ -80,17 +58,13 @@ domains = [xdom,tdom]
 # Initial and boundary conditions
 bcs = [u(xbgn,t,θ) ~ 0., # for all t > 0
        u(xend,t,θ) ~ 0., # for all t > 0
-       u(x,0,θ) ~ (x - xbgn)*(xend - x), #  x*(1. - x), # for all 0 < x < 1
+       u(x,0,θ) ~ (x - xbgn)*(xend - x),     #  x*(1. - x), # for all 0 < x < 1
        Dt(u(x,0,θ)) ~ 0. ] # for all x in domain
 #println(">>>>> bcs:...")
 #dump(bcs,maxdepth=3)
 
 # Build a discretized NN struct
-nGrid = 16
-dn = 1. / (nGrid-1)  # Discretization fraction in both x and t domains
-dx = dn * (xdom.domain.upper - xdom.domain.lower)
 xs = xdom.domain.lower:dx:xdom.domain.upper
-dt = round(dn * (tdom.domain.upper - tdom.domain.lower); sigdigits=3 )
 ts = tdom.domain.lower:dt:tdom.domain.upper
 println("xs= ",xs," len ",length(xs),"  ts= ",ts," len ",length(ts))
 

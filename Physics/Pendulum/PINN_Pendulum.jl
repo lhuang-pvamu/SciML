@@ -5,6 +5,7 @@ Pkg.instantiate();
 using LinearAlgebra
 using NeuralPDE, Flux, ModelingToolkit, GalacticOptim, Optim, DiffEqFlux
 using OrdinaryDiffEq
+using Plots
 
 output_figures="Figures/"
 output_models="Models/"
@@ -46,7 +47,8 @@ prob = discretize(pde_system,discretization)
 
 opt = Optim.BFGS()
 #opt = Optim.ADAM(0.01)
-res = GalacticOptim.solve(prob,opt; cb = cb, maxiters=2000)
+#res = GalacticOptim.solve(prob,opt; cb = cb, maxiters=2000)
+res = GalacticOptim.solve(prob,opt; maxiters=2000)
 phi = discretization.phi
 ps = res.minimizer
 
