@@ -10,9 +10,9 @@ using DataDrivenDiffEq
 using LinearAlgebra, DiffEqSensitivity, Optim
 using DiffEqFlux, Flux
 using Plots
-using CUDAdrv;
-using CuArrays
-using GPUArrays
+#using CUDAdrv;
+#using CuArrays
+#using GPUArrays
 gr()
 #CUDAdrv.name(CuDevice(0))
 
@@ -30,7 +30,7 @@ function set_config!(config, c)
     # Source position(s)
     config["x_s"] = 0.1
     # Receiver position(s)
-    config["x_r"] = 0.1:0.05:0.9 #[0.2, 0.4, 0.6]
+    config["x_r"] = 0.0:0.02:1.0 #[0.2, 0.4, 0.6]
     config["recr_m"] = zeros(length(config["x_r"]), length(config["x"]))
     for i = 1:length(config["x_r"])
         jr = argmin(abs.(config["x"] .- config["x_r"][i]))
@@ -48,7 +48,7 @@ function ricker(t, nu0)
     #println(t0)
     tdel = t .- t0
     expt = (pi * nu0 .* tdel) .^ 2
-    (1.0 .- 2.0 .* expt) .* exp.(-expt)
+    1.0 * (1.0 .- 2.0 .* expt) .* exp.(-expt)
 end
 
 
@@ -82,7 +82,31 @@ function velocity_model()
     c, c0
 end
 
+function seismic_model(config, positions=[0.2, 0.5, 0.7], amp=[0.3, 0.2, 0.3])
+    xrange = config["x"]
+    nx = length(xrange)
+    dx = config["dx"]
+    C0 = ones(nx)
+    C = C0
+    for i= 1:length(positions)
+        dC = zeros(nx)
+        start = convert(Int,positions[i]/dx)+1
+        dC[start:end] .= amp[i]
+        C .= C .+ dC
+    end
 
+    #p = [0,1]
+
+    #for i=1:2
+    #    dC = zeros(nx)
+    #    p[1] = 30 + 100*i
+    #    p[2] = 50 + 100*i
+    #    val = 0.1 + 0.1*i
+    #    dC[p[1]:p[2]] .= -val
+    #    C .= C .+ dC
+    #end
+    C, C0
+end
 
 function set_matrics(c)
     M = Diagonal(1 ./ (c .^ 2))
@@ -112,7 +136,7 @@ function set_matrics(c)
     S = zero(c)
     S[js] = 1.0 / dx
     dt = config["dt"]
-    R = (1 / (dt^2)) .* M .+ (1 / dt) .* A
+    R = (1 / (dt^2)) * M + (1 / dt) * A
     RI = inv(R)
     #display(R)
     #heatmap(R)
