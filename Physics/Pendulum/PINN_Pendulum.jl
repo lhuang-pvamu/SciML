@@ -5,10 +5,14 @@ Pkg.instantiate();
 using LinearAlgebra
 using NeuralPDE, Flux, ModelingToolkit, GalacticOptim, Optim, DiffEqFlux
 using OrdinaryDiffEq
+<<<<<<< HEAD
 using ForwardDiff
 using Adapt
 using Plots
 gr()
+=======
+using Plots
+>>>>>>> 4dc1d759711c67124245608bc923ef6136e0ed89
 
 output_figures="Figures/"
 output_models="Models/"
