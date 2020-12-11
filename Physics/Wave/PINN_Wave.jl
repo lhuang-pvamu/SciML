@@ -20,6 +20,7 @@ output_models="Models/"
 #2D PDE
 # Discretization
 dx = 0.05
+dt = 0.05
 len = Int(1.0/dx)+1
 c=Array(ones(len))
 c[Int(round(len/2))]=2.0
@@ -46,25 +47,31 @@ r = ricker(0.0:dx:2.0, 2)
 plot(r)
 
 function seisrc(x,t,fpeak)
-    index = Int(round((t-0.0)/dx))+1
-    if x==0.5 && t==0.5
-        1.0 #r[index]
+    index = Int(round((t-0.0)/dt))+1
+    #print(index)
+    if x==0.5
+        r[index]
     else
         0.0
     end
 end
 
 seisrc(0.5,0.5,5)
+
+# Space and time domains
+domains = [x ∈ IntervalDomain(0.0,1.0),
+           t ∈ IntervalDomain(0.0,1.0)]
+
+xs,ts = [domain.domain.lower:dx:domain.domain.upper for domain in domains]
 ts
 source = reshape([seisrc(x,t,2.0) for x in xs for t in ts], (length(ts),length(xs)))
 heatmap(source)
-plot(source[:,6])
-
+plot(source[:,11])
 
 @register seisrc(x,t,fpeak)
 
-#eq  = 1.0/vel(x)^2 *  Dtt(u(x,t)) ~ Dxx(u(x,t)) + seisrc(x,t,5)
-eq  = Dtt(u(x,t)) ~ Dxx(u(x,t)) + seisrc(x,t,5)
+eq  = 1.0/vel(x)^2 *  Dtt(u(x,t)) ~ Dxx(u(x,t)) + seisrc(x,t,5)
+#eq  = Dtt(u(x,t)) ~ Dxx(u(x,t)) + seisrc(x,t,5)
 
 # Initial and boundary conditions
 #bcs = [u(0,t) ~ 0.,# for all t > 0
@@ -78,11 +85,6 @@ bcs = [u(x,0) ~ 0.,
         Dt(u(x,0)) ~ 0.,
         Dt(u(0,t)) ~ vel(0)*Dx(u(0,t)),
         Dt(u(1,t)) ~ vel(1)*Dx(u(1,t))]
-
-# Space and time domains
-domains = [x ∈ IntervalDomain(0.0,1.0),
-           t ∈ IntervalDomain(0.0,1.0)]
-
 
 # Neural network
 chain = FastChain(FastDense(2,32,Flux.σ),FastDense(32,32,Flux.σ),FastDense(32,1))
@@ -103,7 +105,7 @@ opt = Optim.BFGS()
 @time res = GalacticOptim.solve(prob,opt; cb = cb, maxiters=200)
 phi = discretization.phi
 
-xs,ts = [domain.domain.lower:dx:domain.domain.upper for domain in domains]
+
 analytic_sol_func(x,t) =  sum([(8/(k^3*pi^3)) * sin(k*pi*x)*cos(vm(x)*k*pi*t) for k in 1:2:50000])
 
 u_predict = reshape([first(phi([x,t],res.minimizer)) for x in xs for t in ts],(length(ts),length(xs)))
