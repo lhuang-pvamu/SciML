@@ -11,12 +11,15 @@ gr()
 output_figures="Figures/"
 output_models="Models/"
 
+println("Running PINN_Wave")
+
 @parameters x, t
 @variables u(..)
 @derivatives Dxx''~x
 @derivatives Dtt''~t
 @derivatives Dt'~t
 @derivatives Dx'~x
+
 #2D PDE
 # Discretization
 dx = 0.05
@@ -48,8 +51,8 @@ plot(r)
 
 function seisrc(x,t,fpeak)
     index = Int(round((t-0.0)/dt))+1
-    #print(index)
     if x==0.5
+        println("seisrc: x= ",x,"  t= ",t,"  index= ",index)
         r[index]
     else
         0.0
@@ -99,9 +102,12 @@ cb = function (p,l)
     println("Current loss is: $l")
     return false
 end
+
 # optimizer
 opt = Optim.BFGS()
 #opt = Optim.Newton()
+
+println("Running solver...")
 @time res = GalacticOptim.solve(prob,opt; cb = cb, maxiters=200)
 phi = discretization.phi
 
