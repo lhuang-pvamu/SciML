@@ -52,7 +52,7 @@ plot(r)
 function seisrc(x,t,fpeak)
     index = Int(round((t-0.0)/dt))+1
     if x==0.5
-        println("seisrc: x= ",x,"  t= ",t,"  index= ",index)
+        #println("seisrc: x= ",x,"  t= ",t,"  index= ",index)
         r[index]
     else
         0.0
@@ -112,7 +112,7 @@ println("Running solver...")
 phi = discretization.phi
 
 
-analytic_sol_func(x,t) =  sum([(8/(k^3*pi^3)) * sin(k*pi*x)*cos(vm(x)*k*pi*t) for k in 1:2:50000])
+analytic_sol_func(x,t) =  sum([(8/(k^3*pi^3)) * sin(k*pi*x)*cos(vel(x)*k*pi*t) for k in 1:2:50000])
 
 u_predict = reshape([first(phi([x,t],res.minimizer)) for x in xs for t in ts],(length(ts),length(xs)))
 u_real = reshape([analytic_sol_func(x,t) for x in xs for t in ts], (length(ts),length(xs)))
