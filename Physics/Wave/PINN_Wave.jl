@@ -48,7 +48,7 @@ plot(r)
 
 function seisrc(x,t,fpeak)
     index = Int(round((t-0.0)/dt))+1
-    #print(index)
+    #println(x,",",t,",",index)
     if x==0.5
         r[index]
     else
@@ -106,7 +106,7 @@ opt = Optim.BFGS()
 phi = discretization.phi
 
 
-analytic_sol_func(x,t) =  sum([(8/(k^3*pi^3)) * sin(k*pi*x)*cos(vm(x)*k*pi*t) for k in 1:2:50000])
+analytic_sol_func(x,t) =  sum([(8/(k^3*pi^3)) * sin(k*pi*x)*cos(vel(x)*k*pi*t) for k in 1:2:50000])
 
 u_predict = reshape([first(phi([x,t],res.minimizer)) for x in xs for t in ts],(length(ts),length(xs)))
 u_real = reshape([analytic_sol_func(x,t) for x in xs for t in ts], (length(ts),length(xs)))
