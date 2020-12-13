@@ -35,8 +35,15 @@ function ricker(t, fpeak)
 end
 
 # Define a wavelet at a single point in x-space
-function seisrc(x,t)
-    abs(x-xsrc) > dx ? 0. : ricker(t, fpeak)
+function seisrc(x::Number, t::Number)
+    # abs(x-xsrc) > dx ? 0. : ricker(t, fpeak)
+    println("seisrc: x= ",x,"  t= ",t)
+    if abs(x-xsrc) > dx; return 0.; end
+    ricker(t, fpeak)
+end
+function seisrc(x::Operation, t::Operation)
+    println("seisrcOp: x= ",x,"  t= ",t)
+    return 0.
 end
 
 #2D PDE
@@ -45,8 +52,9 @@ end
 @derivatives Dxx''~x
 @derivatives Dtt''~t
 @derivatives Dt'~t
+@register seisrc(x,t)
 
-eqn = Dtt(u(x,t,θ)) ~ C^2*Dxx(u(x,t,θ)) + seisrc(x,t)
+eqn = Dtt(u(x,t,θ)) ~  C^2*Dxx(u(x,t,θ)) + seisrc(x,t)
 
 # Space and time domains
 xdom = x ∈ IntervalDomain(xbgn,xend)
@@ -58,7 +66,7 @@ domains = [xdom,tdom]
 # Initial and boundary conditions
 bcs = [u(xbgn,t,θ) ~ 0., # for all t > 0
        u(xend,t,θ) ~ 0., # for all t > 0
-       u(x,0,θ) ~ (x - xbgn)*(xend - x),     #  x*(1. - x), # for all 0 < x < 1
+       u(x,0,θ) ~  (x - xbgn)*(xend - x), # for all 0 < x < 1
        Dt(u(x,0,θ)) ~ 0. ] # for all x in domain
 #println(">>>>> bcs:...")
 #dump(bcs,maxdepth=3)
