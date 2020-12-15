@@ -19,6 +19,7 @@ We studied the following physical phenomenons:
 4. Poisson
 5. Lorenz
 
+with the following SciML models:
 
 .. toctree::
    :maxdepth: 2
