@@ -8,9 +8,6 @@ The foundamental crux of the project is to solve a variety of differential equat
 The code has the following structure:
 
 ## Physics
-## Games
-## Biology
-## Utils
 
 In Physics, it has the following experiments using SciML:
 
@@ -20,20 +17,27 @@ In Physics, it has the following experiments using SciML:
 4. Poisson
 5. Lorenz
 
-In Biology, it contains
-
-1. SEIR model for COVID-19
-
-In Utils, it has
-
-1. Symmetry Neural Network
+## Games
 
 In Games, it has
 
 1. Hanoi Tower
 
+## Biology
 
-SciML models include:
+In Biology, it contains
+
+1. SEIR model for COVID-19
+
+## Utils
+
+In Utils, it has
+
+1. Symmetry Neural Network
+
+
+
+## SciML models include:
 
 1. Physics Informed Neural Network (PINN)
 2. Neural ODE
