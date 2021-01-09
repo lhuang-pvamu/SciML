@@ -20,8 +20,8 @@ fpeak = 2.
 C= 0.2 # 2000.  # 1
 SSQ = 1. / C^2   # Slowness squared
 
-nGrid = 41
-netSz = 32
+nGrid = 49
+netSz = 64
 dn = 1. / (nGrid-1)  # Discretization fraction in both x and t domains
 dx = dn * (xend - xbgn)
 dt = round(dn * tlast; sigdigits=3 )
@@ -81,6 +81,16 @@ function ramps(x)
 end
 @register ramps(x)
 
+# Exponential spike
+function espike(x, x0)
+    ret = exp( -100. .* abs(x-x0) )
+end
+@register espike(x, x0)
+
+evel = zeros( length(xs) )
+for (i,x) in enumerate(xs); evel[i] = espike(x,xsrc); end
+plot(evel)
+
 eqn = SSQ * Dtt(u(x,t)) ~ Dxx(u(x,t))   # + seisrc(x,t)
 
 # Space and time domains
@@ -94,8 +104,8 @@ domains = [xdom,tdom]
 bcs = [u(xbgn,t) ~ 0., # for all t > 0
        u(xend,t) ~ 0., # for all t > 0
        #u(x,0) ~ (x - xbgn)*(xend - x), # for all 0 < x < 1
-       u(x,0) ~ ramps(x),
-       Dt(u(x,0)) ~ 0. ] # for all x in domain
+       u(x,0) ~ 0.,
+       Dt(u(x,0)) ~ espike(x,xsrc) ] # for all x in domain
 #println(">>>>> bcs:...")
 #dump(bcs,maxdepth=3)
 
@@ -128,7 +138,7 @@ prob = discretize(pde_system, discreteNet)
 opt = Optim.BFGS()
 
 println(">>>>> Solving...")
-@time result = GalacticOptim.solve(prob, opt;  cb=capture, maxiters=1200)
+@time result = GalacticOptim.solve(prob, opt;  cb=capture, maxiters=2400)
 phi = discreteNet.phi  # trial solution
 
 println(">>>>> Plotting result...")
@@ -136,6 +146,7 @@ lossPlt = plot(losses, yscale=:log10, title="Seis1D_NN: Loss history")
 plot(lossPlt)
 
 u_predict = reshape([first(phi([x,t],result.minimizer)) for x in xs for t in ts],(length(xs),length(ts)))
+phi = discreteNet.phi  # trial solution
 
 wvPlt = plot(xs, ts, u_predict, linetype=:contourf, title="Seis1D_NN: wavefield u(x,t)")
 plot(wvPlt)
