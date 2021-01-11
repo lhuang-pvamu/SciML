@@ -20,8 +20,8 @@ fpeak = 2.
 C= 0.2 # 2000.  # 1
 SSQ = 1. / C^2   # Slowness squared
 
-nGrid = 49
-netSz = 64
+nGrid = 41
+netSz = 32
 dn = 1. / (nGrid-1)  # Discretization fraction in both x and t domains
 dx = dn * (xend - xbgn)
 dt = round(dn * tlast; sigdigits=3 )
