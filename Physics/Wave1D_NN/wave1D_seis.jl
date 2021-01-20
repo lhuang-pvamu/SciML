@@ -13,25 +13,26 @@ using Plots
 println("NeuralPDE -- 1D wave equation with source term")
 
 # Problem definition parameters
-xbgn = 0. ;  xend = 0.6 # 6000.
+xbgn = 0. ;  xend = .6 # 6000.
 psrc = 0.1;  xsrc = (xend-xbgn)*psrc + xbgn
 tlast = 3.
-fpeak = 2.
-C= 0.2 # 2000.  # 1
+C= .2 # 2000.  # 1
 SSQ = 1. / C^2   # Slowness squared
 
 nGrid = 41
 netSz = 32
 dn = 1. / (nGrid-1)  # Discretization fraction in both x and t domains
-dx = dn * (xend - xbgn)
-dt = round(dn * tlast; sigdigits=3 )
+dx = round( dn * (xend - xbgn), sigdigits=3 )
+dt = round( dn * tlast; sigdigits=3 )
 println("For nGrid= "*string(nGrid)*",  dx= "*string(dx)*"  dt= "*string(dt))
 
 xs = xbgn:dx:xend
 ixsrc = Int(round( (xsrc-xbgn)/dx )) + 1
 ts = 0:dt:tlast
 
+#=
 # Build a Ricker wavelet with a given peak frequency (Hz)
+fpeak = 2.
 function ricker(t, fpeak)
     sigmaInv = pi * fpeak * sqrt(2)
     cut = 1.e-6
@@ -58,6 +59,7 @@ end
 # plot the source field
 source = reshape([seisrc(x,t) for x in xs for t in ts], (length(ts),length(xs)))
 heatmap(xs,ts,source)
+=#
 
 #2D PDE
 @parameters x, t
@@ -73,13 +75,13 @@ function ixpoint(x)
     ( abs(x-xsrc) < dx ? 1.0 : 0.0 )
 end
 @register ixpoint(x)
-=#
 
 # Initial ramp function
 function ramps(x)
     ret = (x - xbgn)*(xend - x)
 end
 @register ramps(x)
+=#
 
 # Exponential spike
 function espike(x, x0)
@@ -138,7 +140,7 @@ prob = discretize(pde_system, discreteNet)
 opt = Optim.BFGS()
 
 println(">>>>> Solving...")
-@time result = GalacticOptim.solve(prob, opt;  cb=capture, maxiters=2400)
+@time result = GalacticOptim.solve(prob, opt;  cb=capture, maxiters=9000)
 phi = discreteNet.phi  # trial solution
 
 println(">>>>> Plotting result...")
