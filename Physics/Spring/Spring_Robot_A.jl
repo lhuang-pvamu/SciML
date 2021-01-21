@@ -2,12 +2,13 @@ cd(@__DIR__)
 using Pkg;
 Pkg.activate("..");
 Pkg.instantiate();
+Pkg.precompile();
 
 using DifferentialEquations, Flux, Optim, DiffEqFlux, DiffEqSensitivity
 using OrdinaryDiffEq
 using Plots
 gr()
-#using Zygote
+using Zygote
 #using Zygote: gradient, @ignore
 using HDF5
 using ReverseDiff
@@ -28,27 +29,33 @@ compute_center(bolts)
 
 ann = FastChain(FastDense(size(bolts)[2]*6+12,32,tanh),FastDense(32, size(springs)[2],tanh))
 
-if isfile(output_models*"spring_robot_model_C.h5")
-    p_ann = h5read(output_models*"spring_robot_model_C.h5", "weights")
+if isfile(output_models*"spring_robot_model_A.h5")
+    p_ann = h5read(output_models*"spring_robot_model_A.h5", "weights")
 else
     p_ann = initial_params(ann)
 end
-p_ann = initial_params(ann)
+#p_ann = initial_params(ann)
 
 function apply_spring_force(u, v, p, t)
     sinwaves = [sin(t*Δt*10 + 2pi/10 * i) for i in 1:10] .|> Float32
     #actuation = ones(length(springs[1,:]))*sin(10*t*2pi)*0.1
     c = compute_center(u)
-    append!(sinwaves, (u.-c))
-    append!(sinwaves, u)
-    append!(sinwaves, v*0.1)
-    append!(sinwaves, (goal-c)*0.5)
+    dist = u.-c
+    input = vcat(sinwaves,reshape(dist,:),reshape(u,:),reshape(v*0.1f0,:),reshape((goal-c)*0.5f0,:))
+    #append!(sinwaves, (u.-c))
+    #append!(sinwaves, u)
+    #append!(sinwaves, v*0.1)
+    #append!(sinwaves, (goal-c)*0.5)
     #@show sinwaves
     #input = Float32.(vcat(sinwaves,vec(u[1:2,:].-center),vec(u[3:4,:])))
-    actuation = ann(hcat(sinwaves),p).*springs[ACTUATION, :]
-    inc = []
+    actuation = ann(input,p).*springs[ACTUATION, :]
+    #inc = []
+    #for i in 1:length(u[1,:])
+    #    append!(inc, [[]])
+    #end
+    inc = Zygote.Buffer(u)
     for i in 1:length(u[1,:])
-        append!(inc, [[]])
+        inc[:,i] = [0.0,0.0]
     end
     for i in 1:length(springs[1,:])
         a = Int(springs[SOURCE,i])
@@ -63,15 +70,19 @@ function apply_spring_force(u, v, p, t)
         #println(Δd)
         impulse = Δt * Δd * (springs[STIFFNESS, i] / distance) * direction
         #println(distance - target_distance)
-        append!(inc[a], [-impulse])
-        append!(inc[b], [impulse])
+        #append!(inc[a], [-impulse])
+        inc[:,a] = inc[:,a] - impulse
+        #append!(inc[b], [impulse])
+        inc[:,b] = inc[:,b] + impulse
     end
-    hcat([sum(inc[i]) for i in 1:length(u[1,:])]...)
+    #hcat([sum(inc[i]) for i in 1:length(u[1,:])]...)
+    return copy(inc)
 end
 
 function advance(state,du,t)
     #len = length(state)
     new_state = []
+    new_state = Zygote.Buffer(state)
     for i in 1:length(bolts[1,:])
         s = Float32(exp(-Δt * damping))
         old_v = s*state[3:4,i] + Δt*gravity*[0.0f0,1.0f0] + du[:,i]
@@ -85,25 +96,27 @@ function advance(state,du,t)
         end
         new_x = old_x + toi*old_v + (Δt-toi) * new_v
 
-        append!(new_state, [vcat(new_x, new_v)])
+        #append!(new_state, [vcat(new_x, new_v)])
+        new_state[:,i] = vcat(new_x, new_v)
     end
-    hcat(new_state...)
+    #hcat(new_state...)
+    return copy(new_state)
 end
-
-
 
 function goforward(θ)
     u0 = bolts
     v0 = Float32.(vcat(bolts,zeros(size(bolts))))
-    total_step =  2
+    total_step =  5000
     u = u0
     v = zeros(size(bolts))
-    state = [] #Vector{typeof(u0)}()
+    #state = [] #Vector{typeof(u0)}()
     #s = Vector{Int}()
-    append!(state,[v0])
+    #append!(state,[v0])
+    state = Zygote.Buffer(v0, length(v0[:,1]), length(v0[1,:]), total_step)
+    state[:,:,1] = v0
     newstate = v0
 
-    for t in 1:total_step
+    for t in 2:total_step
         du = apply_spring_force(u, v, θ, t)
         newstate = advance(newstate, du, t)
         #@show newstate
@@ -111,10 +124,12 @@ function goforward(θ)
         v = newstate[3:4,:]
         #print(u)
         #@ignore push!(s, u0)
-        append!(state,[newstate])
+        #append!(state,[newstate])
+        state[:,:,t] = newstate
         #append!(state, [du])
     end
-    hcat(state...)
+    #hcat(state...)
+    return copy(state)
     #u
 end
 
@@ -131,11 +146,11 @@ function forward_loss(θ)
     #sum(abs2, target[1] .- pred[1,:]) +
     #-sum(pred[1,:,end]) + (sum(abs2, get_distance.(pred[1:2,1,:],pred[1:2,6,:]) .- distance16)
     #+ sum(abs2, get_distance.(pred[1:2,3,:],pred[1:2,4,:]) .- distance34))*0.1 , pred
-    -sum(pred[1,:,end])
-    #-(pred[1,1,end]+pred[1,3,end])+
+    #-sum(pred[1,:,end])
+    -(pred[1,1,end]+pred[1,3,end])+
     #-(pred[1,1,end]+pred[1,3,end]+pred[1,13,end]+pred[1,15,end]) +
     #sum(abs2, compute_center(pred[1:2,:,end])-goal) +#, pred
-    sum(abs2,pred[2,:,:].- u0[2,:])*0.01 #, pred
+    sum(abs2,pred[2,:,:].- bolts[2,:])*0.01 #, pred
     #sum(abs2, refdata[:,1,:] - pred[1:2,1,1:length(refdata[1,1,:])]) +
     #sum(abs2, refdata[:,2,:] - pred[1:2,3,1:length(refdata[1,1,:])]), pred
     #+ sum(abs2,pred[2,:,:].-u0[2,:])*0.1 +
@@ -152,12 +167,13 @@ forward_loss(p_ann)
 gs = ReverseDiff.gradient(p -> forward_loss(p), p_ann)
 #gs = ForwardDiff.gradient(p -> forward_loss(p), p_ann)
 opt = ADAM(0.001)
-epochs = 100
+epochs = 10
 Flux.Optimise.update!(opt, p_ann, gs)
 callback() = println("Loss = $(forward_loss(p_ann))")
 
 for epoch in 1:epochs
-    gs = ReverseDiff.gradient(p -> forward_loss(p), p_ann)
+    #gs = ReverseDiff.gradient(p -> forward_loss(p), p_ann)
+    gs = Zygote.gradient(p -> forward_loss(p), p_ann)[1]
     Flux.Optimise.update!(opt, p_ann, gs)
     if epoch % 2 == 1
         callback()
@@ -176,7 +192,7 @@ plot(data[1:2,2,:]')
 anim = anim_robot(data, springs; step=100)
 gif(anim, output_figures*"anim_spring_robot.gif", fps = 10)
 
-weights = p_ann
+weights = p_annz
 fid=h5open(output_models*"spring_robot_model_A.h5","w")
 fid["weights"] = weights
 close(fid)

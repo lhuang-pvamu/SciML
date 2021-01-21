@@ -26,6 +26,90 @@ g = 9.81
 #damping = 10.0
 #anchorY = 200.0
 
+############
+## Create a simple spring case, use Neural network to learn its force/position
+############
+
+k = 1.0
+m=1.0
+
+force(dx,x,k,t) = -k*x + 0.1sin(x)
+
+acceleration(dx,x,k,t) = force(dx,x,k,t)/m
+prob = SecondOrderODEProblem(acceleration,1.0,0.0,(0.0,10.0),k)
+sol = solve(prob)
+plot(sol,label=["Velocity" "Position"])
+
+
+plot_t = 0:0.01:10
+data_plot = sol(plot_t)
+positions_plot = [state[2] for state in data_plot]
+force_plot = [force(state[1],state[2],k,t) for state in data_plot]
+
+# Generate the dataset
+t = 0:3.3:10
+dataset = sol(t)
+position_data = [state[2] for state in sol(t)]
+force_data = [force(state[1],state[2],k,t) for state in sol(t)]
+
+plot(plot_t,force_plot,xlabel="t",label="True Force")
+scatter!(t,force_data,label="Force Measurements")
+
+# Train a network to estimate the force
+NNForce = Chain(x -> [x],
+           Dense(1,32,tanh),
+           Dense(32,1),
+           first)
+
+loss() = sum(abs2,NNForce(position_data[i]) - force_data[i] for i in 1:length(position_data))
+loss()
+
+opt = Flux.Descent(0.01)
+data = Iterators.repeated((), 5000)
+iter = 0
+cb = function () #callback function to observe training
+  global iter += 1
+  if iter % 500 == 0
+    display(loss())
+  end
+end
+display(loss())
+Flux.train!(loss, Flux.params(NNForce), data, opt; cb=cb)
+
+learned_force_plot = NNForce.(positions_plot)
+
+plot(plot_t,force_plot,xlabel="t",label="True Force")
+plot!(plot_t,learned_force_plot,label="Predicted Force")
+scatter!(t,force_data,label="Force Measurements")
+
+
+force2(dx,x,k,t) = -k*x
+acceleration2(dx,x,k,t) = force2(dx,x,k,t)/m
+prob_simplified = SecondOrderODEProblem(acceleration2,1.0,0.0,(0.0,10.0),k)
+sol_simplified = solve(prob_simplified)
+plot(sol,label=["Velocity" "Position"])
+plot!(sol_simplified,label=["Velocity Simplified" "Position Simplified"])
+
+random_positions = [2rand()-1 for i in 1:100] # random values in [-1,1]
+loss_ode() = sum(abs2,NNForce(x) - (-k*x) for x in random_positions)
+loss_ode()
+
+λ = 0.1
+composed_loss() = loss() + λ*loss_ode()
+
+Flux.train!(composed_loss, Flux.params(NNForce), data, opt; cb=cb)
+
+learned_force_plot = NNForce.(positions_plot)
+
+plot(plot_t,force_plot,xlabel="t",label="True Force")
+plot!(plot_t,learned_force_plot,label="Predicted Force")
+scatter!(t,force_data,label="Force Measurements")
+
+
+#####################
+#  ODE for 1 spring
+#####################
+
 
 function spring_ode_1d(u, p, t)
     position = u[1]
@@ -183,3 +267,12 @@ anim = @animate for i=1:301
 end
 
 gif(anim, output_figures*"anim_4springs_10.gif", fps = 10)
+
+
+##  Hooke's law
+#  F = k(||xa - xb||2 - l0) (xa-xb)/||xa-xb||2
+#  where k is the spring stiffness, F is spring force,
+#  xa and xb are the positions of two mass, and l0 is the rest length
+##
+
+ 
