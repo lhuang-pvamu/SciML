@@ -279,29 +279,3 @@ weights = p_ann
 fid=h5open(output_models*"invertPend.h5","w")
 fid["weights"] = weights
 close(fid)
-
-
-##
-# reinforce learning
-##
-
-using ReinforcementLearning
-run(E`JuliaRL_BasicDQN_CartPole`)
-
-re.agent.trajectory.t1.traces.reward.buffer
-
-data = re.agent.trajectory.t2.t1.x
-
-plot(data[1,:])
-
-using Trebuchet
-
-t = TrebuchetState()
-simulate(t)
-
-target = 80 # or nothing
-s = visualise(t, target)
-
-if @isdefined(Blink)
-  body!(Blink.Window(), s)
-end

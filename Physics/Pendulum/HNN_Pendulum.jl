@@ -62,22 +62,24 @@ L=1.0
 g = 9.8
 Ham_Pendulum(θ, p) = p^2/(2*m*L^2) - m*g*L*cos(θ)
 
-Ham_Pendulum(0.0, 1.0)
+Ham_Pendulum(1.0, 0.0)
 
 # θ̇ = p/mL^2 , ṗ = -mgLsin(θ)
 analytics_Ham_Pendulum(θ,p) = [p/(m*L^2), -m*g*L*sin(θ)]
 
-analytics_Ham_Pendulum(0.0, 1.0)
+analytics_Ham_Pendulum(1.0, 0.0)
 
 function ODE_Ham_analytics_fn(u, p, t)
     analytics_Ham_Pendulum(u[1],u[2])
 end
 
 function ODE_Ham_fn(u, p, t)
-    dHdq, dHdp  = ReverseDiff.gradient((u,p) -> Hamiltonian_fn(u,p), (u,p))[1]
+    dHdq, dHdp  = ReverseDiff.gradient(u -> Ham_Pendulum(u[1],u[2]), u)
     # dHdp = dqdt ; -dHdq = dpdt
     [dHdp, -dHdq]
 end
+
+ODE_Ham_fn([1.0,0.0], 0.0, 1.0)
 
 u0 = Float32[1.0, 0.0]
 tspan = Float32[0.0,10.0]
@@ -87,3 +89,16 @@ sol = solve(prob, Tsit5(), saveat=Δt, reltol=1.0e-9)
 data = Array(sol)
 #plot(sol)
 plot(data[1,:], data[2,:], axis="q", yaxis="p", label="phase", marker = :hex)
+
+prob = ODEProblem(ODE_Ham_fn, u0, tspan)
+sol = solve(prob, Tsit5(), saveat=Δt, reltol=1.0e-9)
+data = Array(sol)
+#plot(sol)
+plot(data[1,:], data[2,:], axis="q", yaxis="p", label="phase", marker = :hex)
+
+NN = FastChain(FastDense(3,32,tanh),FastDense(32,1))
+pnn = initial_params(NN)
+
+NN([1.0,0.0,0.0],pnn)
+
+Flux.gradient(x -> sum(NN(x, p)), [1.0,0.0,1.0])
