@@ -85,6 +85,7 @@ agent = Agent(
     ),
 )
 
+total_reward_per_episode = TotalBatchRewardPerEpisode(N_ENV)
 hook = ComposedHook(
     total_reward_per_episode,
     DoEveryNStep() do t, agent, env
@@ -108,7 +109,6 @@ hook = ComposedHook(
 
 function train(agent, hook)
 	stop_condition = StopAfterStep(50_000)
-	total_reward_per_episode = TotalBatchRewardPerEpisode(N_ENV)
 	run(agent, env, stop_condition, hook)
 	pre_model = agent.policy.approximator.actor.pre
 	mu_model = agent.policy.approximator.actor.μ
