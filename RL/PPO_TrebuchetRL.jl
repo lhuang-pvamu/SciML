@@ -53,7 +53,7 @@ agent = Agent(
                     Dense(64, 64, relu; initW = glorot_uniform(rng)),
                 ),
                 μ = Chain(Dense(64, 1, tanh; initW = glorot_uniform(rng)), vec),
-                σ = Chain(Dense(64, 1; initW = glorot_uniform(rng)), vec),
+                σ = Chain(Dense(64, 1, tanh; initW = glorot_uniform(rng)), vec),
             ),
             critic = Chain(
                 Dense(ns, 64, relu; initW = glorot_uniform(rng)),
@@ -108,7 +108,7 @@ hook = ComposedHook(
 )
 
 function train(agent, hook)
-	stop_condition = StopAfterStep(50_000)
+	stop_condition = StopAfterStep(10_000)
 	run(agent, env, stop_condition, hook)
 	pre_model = agent.policy.approximator.actor.pre
 	mu_model = agent.policy.approximator.actor.μ
@@ -119,6 +119,23 @@ function train(agent, hook)
 	@save output_models*"PPO_Trebuchet_actor_mu.bson" mu_model
 	@save output_models*"PPO_Trebuchet_actor_sigma.bson" sigma_model
 	@save output_models*"PPO_Trebuchet_critic.bson" critic_model
+
+	env1 = TrebuchetEnv(continuous=true)
+	reset!(env1)
+	@show state(env1)
+	#set_goal!(env, 80)
+	rewards = [reward(env1)]
+	angles = [env1.state[1]]
+	while !is_terminated(env1)
+		action = agent(env1)
+		env1(action)
+		r = reward(env1)
+		@show action, r
+		append!(rewards, r)
+		append!(angles, env1.state[1])
+	end
+
+	plot([rewards,angles],label=["rewards" "θ"], layout=(2,1))
 end
 
 function test(agent,hook)
